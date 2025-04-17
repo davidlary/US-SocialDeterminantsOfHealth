@@ -422,12 +422,44 @@ process_extended_data_v2 <- function(data_sources,
         
         # Join back to the main data
         if (!is.null(var_data)) {
+          # First check if there are duplicate GEOID+year combinations in either dataset
+          if (anyDuplicated(merged_data[, c("GEOID", "year")]) > 0) {
+            print_msg(paste("WARNING: Duplicated GEOID+year in merged_data. Fixing..."), 1)
+            # Fix by taking the first occurrence of each GEOID+year
+            merged_data <- merged_data %>% 
+              group_by(GEOID, year) %>% 
+              slice(1) %>% 
+              ungroup()
+          }
+          
+          if (anyDuplicated(var_data[, c("GEOID", "year")]) > 0) {
+            print_msg(paste("WARNING: Duplicated GEOID+year in var_data for", var_name, ". Fixing..."), 1)
+            # Fix by taking the first occurrence of each GEOID+year
+            var_data <- var_data %>% 
+              group_by(GEOID, year) %>% 
+              slice(1) %>% 
+              ungroup()
+          }
+          
+          # Print size information for debugging
+          if (verbose) {
+            print_msg(paste("merged_data has", nrow(merged_data), "rows,", ncol(merged_data), "columns"), 2)
+            print_msg(paste("var_data has", nrow(var_data), "rows,", ncol(var_data), "columns"), 2)
+            print_msg(paste("GEOID+year combinations in merged_data:", nrow(distinct(merged_data, GEOID, year))), 2)
+            print_msg(paste("GEOID+year combinations in var_data:", nrow(distinct(var_data, GEOID, year))), 2)
+          }
+          
+          # Now do the join, using semi_join first to limit the join to matching keys only
+          var_data_to_join <- var_data %>%
+            semi_join(merged_data, by = c("GEOID", "year"))
+            
+          # Remove existing variables before joining
           merged_data <- merged_data %>%
             select(-any_of(c(var_name, 
                            paste0(var_name, "_data_quality"),
                            paste0(var_name, "_data_source"),
                            paste0(var_name, "_data_vintage")))) %>%
-            left_join(var_data, by = c("GEOID", "year"))
+            left_join(var_data_to_join, by = c("GEOID", "year"))
           
           if (verbose) {
             print_msg(paste("Processed variable:", var_name), 2)
@@ -458,11 +490,44 @@ process_extended_data_v2 <- function(data_sources,
       
       # Join to combined data
       if (length(join_vars) > 0) {
+        # First check if there are duplicate GEOID+year combinations in either dataset
+        if (anyDuplicated(combined_data[, c("GEOID", "year")]) > 0) {
+          print_msg(paste("WARNING: Duplicated GEOID+year in combined_data. Fixing..."), 1)
+          # Fix by taking the first occurrence of each GEOID+year
+          combined_data <- combined_data %>% 
+            group_by(GEOID, year) %>% 
+            slice(1) %>% 
+            ungroup()
+        }
+        
+        # Prepare domain data without duplicates
+        domain_data_clean <- domain_data %>% 
+          select(GEOID, year, all_of(join_vars))
+          
+        if (anyDuplicated(domain_data_clean[, c("GEOID", "year")]) > 0) {
+          print_msg(paste("WARNING: Duplicated GEOID+year in domain", domain_name, ". Fixing..."), 1)
+          # Fix by taking the first occurrence of each GEOID+year
+          domain_data_clean <- domain_data_clean %>% 
+            group_by(GEOID, year) %>% 
+            slice(1) %>% 
+            ungroup()
+        }
+        
+        # Use semi_join to restrict the join only to matching keys
+        domain_data_to_join <- domain_data_clean %>%
+          semi_join(combined_data, by = c("GEOID", "year"))
+        
+        # Print size information for debugging
+        if (verbose) {
+          print_msg(paste("combined_data has", nrow(combined_data), "rows"), 2)
+          print_msg(paste("domain_data_to_join has", nrow(domain_data_to_join), "rows"), 2)
+          print_msg(paste("GEOID+year combinations in combined_data:", nrow(distinct(combined_data, GEOID, year))), 2)
+          print_msg(paste("GEOID+year combinations in domain_data:", nrow(distinct(domain_data_to_join, GEOID, year))), 2)
+        }
+        
+        # Perform the join with the clean data
         combined_data <- combined_data %>%
-          left_join(
-            domain_data %>% select(GEOID, year, all_of(join_vars)),
-            by = c("GEOID", "year")
-          )
+          left_join(domain_data_to_join, by = c("GEOID", "year"))
       }
     }
     
@@ -593,12 +658,36 @@ process_extended_data_v2 <- function(data_sources,
               orig_cols <- setdiff(names(original_data), names(combined_data))
               
               if (length(orig_cols) > 0) {
-                # Join additional columns
+                # First check for duplicates in both datasets
+                if (anyDuplicated(combined_data[, c("GEOID", "year")]) > 0) {
+                  print_msg(paste("WARNING: Duplicated GEOID+year in combined_data before integrating original data. Fixing..."), 1)
+                  # Fix by taking the first occurrence of each GEOID+year
+                  combined_data <- combined_data %>% 
+                    group_by(GEOID, year) %>% 
+                    slice(1) %>% 
+                    ungroup()
+                }
+                
+                # Prepare original data without duplicates
+                original_data_clean <- original_data %>% 
+                  select(GEOID, year, all_of(orig_cols))
+                  
+                if (anyDuplicated(original_data_clean[, c("GEOID", "year")]) > 0) {
+                  print_msg(paste("WARNING: Duplicated GEOID+year in original_data. Fixing..."), 1)
+                  # Fix by taking the first occurrence of each GEOID+year
+                  original_data_clean <- original_data_clean %>% 
+                    group_by(GEOID, year) %>% 
+                    slice(1) %>% 
+                    ungroup()
+                }
+                
+                # Use semi_join to restrict the join only to matching keys
+                original_data_to_join <- original_data_clean %>%
+                  semi_join(combined_data, by = c("GEOID", "year"))
+                
+                # Join additional columns with clean data
                 combined_data <- combined_data %>%
-                  left_join(
-                    original_data %>% select(GEOID, year, all_of(orig_cols)),
-                    by = c("GEOID", "year")
-                  )
+                  left_join(original_data_to_join, by = c("GEOID", "year"))
                 
                 print_msg(paste("Added", length(orig_cols), "columns from original data"), 2)
               }
