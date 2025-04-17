@@ -1031,16 +1031,206 @@ log_message("Importing county metadata...",
 
 # Extract county metadata from processed data
 if (!is.null(processed_data) && "GEOID" %in% names(processed_data)) {
-  county_data <- processed_data %>%
-    select(GEOID, NAME) %>%
-    distinct() %>%
-    mutate(
-      geoid = GEOID,
-      name = NAME,
-      state_fips = substr(GEOID, 1, 2),
-      state_name = gsub(".*,\\s*(.*)$", "\\1", NAME)
-    ) %>%
-    select(geoid, name, state_fips, state_name)
+  log_message("Processing county metadata from processed data...", level = "INFO")
+  
+  # Check if NAME column exists
+  has_name_column <- "NAME" %in% names(processed_data)
+  
+  if (has_name_column) {
+    log_message("Found NAME column in processed data", level = "INFO")
+    county_data <- processed_data %>%
+      select(GEOID, NAME) %>%
+      distinct() %>%
+      mutate(
+        geoid = GEOID,
+        name = NAME,
+        state_fips = substr(GEOID, 1, 2),
+        state_name = gsub(".*,\\s*(.*)$", "\\1", NAME)
+      ) %>%
+      select(geoid, name, state_fips, state_name)
+  } else {
+    # If NAME column doesn't exist, create county metadata using just GEOID
+    log_message("NAME column not found in processed data. Creating basic county metadata.", level = "INFO")
+    
+    # Try to get county names from other sources
+    county_names <- NULL
+    
+    # 1. Try to get names from a standard county metadata file if it exists
+    county_metadata_file <- file.path(root_dir, "data", "county_metadata.csv")
+    if (file.exists(county_metadata_file)) {
+      log_message("Found county metadata file. Loading county names.", level = "INFO")
+      county_meta <- read_csv(county_metadata_file, show_col_types = FALSE)
+      if (all(c("geoid", "name") %in% names(county_meta))) {
+        county_names <- county_meta %>% select(geoid, name)
+      } else if (all(c("GEOID", "NAME") %in% names(county_meta))) {
+        county_names <- county_meta %>% 
+          select(GEOID, NAME) %>%
+          rename(geoid = GEOID, name = NAME)
+      }
+    }
+    
+    # 2. If we still don't have county names, use fips codes from tigris if available
+    if (is.null(county_names) && requireNamespace("tigris", quietly = TRUE)) {
+      tryCatch({
+        log_message("Using tigris package to get county names", level = "INFO")
+        counties_sf <- tigris::counties(year = 2020)
+        if (all(c("GEOID", "NAME") %in% names(counties_sf))) {
+          county_names <- counties_sf %>% 
+            sf::st_drop_geometry() %>%
+            select(GEOID, NAME) %>%
+            rename(geoid = GEOID, name = NAME)
+        }
+      }, error = function(e) {
+        log_message(paste("Error getting county names from tigris:", conditionMessage(e)), level = "WARN")
+      })
+    }
+    
+    # 3. Create basic county metadata with what we have
+    if (!is.null(county_names)) {
+      log_message(paste("Found", nrow(county_names), "county names from external sources"), level = "INFO")
+      
+      # Join with processed data geoids
+      county_geoids <- processed_data %>%
+        select(GEOID) %>%
+        distinct() %>%
+        rename(geoid = GEOID)
+      
+      county_data <- county_geoids %>%
+        left_join(county_names, by = "geoid") %>%
+        mutate(
+          # If name is NA, create a placeholder name
+          name = ifelse(is.na(name), paste("County", geoid), name),
+          state_fips = substr(geoid, 1, 2),
+          # Try to extract state name from county name if it contains a comma
+          state_name = ifelse(grepl(",", name), 
+                             gsub(".*,\\s*(.*)$", "\\1", name),
+                             # Otherwise use state FIPS code to lookup state name
+                             case_when(
+                               state_fips == "01" ~ "Alabama",
+                               state_fips == "02" ~ "Alaska",
+                               state_fips == "04" ~ "Arizona",
+                               state_fips == "05" ~ "Arkansas",
+                               state_fips == "06" ~ "California",
+                               state_fips == "08" ~ "Colorado",
+                               state_fips == "09" ~ "Connecticut",
+                               state_fips == "10" ~ "Delaware",
+                               state_fips == "11" ~ "District of Columbia",
+                               state_fips == "12" ~ "Florida",
+                               state_fips == "13" ~ "Georgia",
+                               state_fips == "15" ~ "Hawaii",
+                               state_fips == "16" ~ "Idaho",
+                               state_fips == "17" ~ "Illinois",
+                               state_fips == "18" ~ "Indiana",
+                               state_fips == "19" ~ "Iowa",
+                               state_fips == "20" ~ "Kansas",
+                               state_fips == "21" ~ "Kentucky",
+                               state_fips == "22" ~ "Louisiana",
+                               state_fips == "23" ~ "Maine",
+                               state_fips == "24" ~ "Maryland",
+                               state_fips == "25" ~ "Massachusetts",
+                               state_fips == "26" ~ "Michigan",
+                               state_fips == "27" ~ "Minnesota",
+                               state_fips == "28" ~ "Mississippi",
+                               state_fips == "29" ~ "Missouri",
+                               state_fips == "30" ~ "Montana",
+                               state_fips == "31" ~ "Nebraska",
+                               state_fips == "32" ~ "Nevada",
+                               state_fips == "33" ~ "New Hampshire",
+                               state_fips == "34" ~ "New Jersey",
+                               state_fips == "35" ~ "New Mexico",
+                               state_fips == "36" ~ "New York",
+                               state_fips == "37" ~ "North Carolina",
+                               state_fips == "38" ~ "North Dakota",
+                               state_fips == "39" ~ "Ohio",
+                               state_fips == "40" ~ "Oklahoma",
+                               state_fips == "41" ~ "Oregon",
+                               state_fips == "42" ~ "Pennsylvania",
+                               state_fips == "44" ~ "Rhode Island",
+                               state_fips == "45" ~ "South Carolina",
+                               state_fips == "46" ~ "South Dakota",
+                               state_fips == "47" ~ "Tennessee",
+                               state_fips == "48" ~ "Texas",
+                               state_fips == "49" ~ "Utah",
+                               state_fips == "50" ~ "Vermont",
+                               state_fips == "51" ~ "Virginia",
+                               state_fips == "53" ~ "Washington",
+                               state_fips == "54" ~ "West Virginia",
+                               state_fips == "55" ~ "Wisconsin",
+                               state_fips == "56" ~ "Wyoming",
+                               state_fips == "72" ~ "Puerto Rico",
+                               TRUE ~ paste("State", state_fips)
+                             ))
+        ) %>%
+        select(geoid, name, state_fips, state_name)
+    } else {
+      # If no external county name source, create basic metadata
+      log_message("No external county name source found. Creating placeholder names.", level = "INFO")
+      county_data <- processed_data %>%
+        select(GEOID) %>%
+        distinct() %>%
+        mutate(
+          geoid = GEOID,
+          name = paste("County", GEOID),
+          state_fips = substr(GEOID, 1, 2),
+          state_name = case_when(
+            state_fips == "01" ~ "Alabama",
+            state_fips == "02" ~ "Alaska",
+            state_fips == "04" ~ "Arizona",
+            state_fips == "05" ~ "Arkansas",
+            state_fips == "06" ~ "California",
+            state_fips == "08" ~ "Colorado",
+            state_fips == "09" ~ "Connecticut",
+            state_fips == "10" ~ "Delaware",
+            state_fips == "11" ~ "District of Columbia",
+            state_fips == "12" ~ "Florida",
+            state_fips == "13" ~ "Georgia",
+            state_fips == "15" ~ "Hawaii",
+            state_fips == "16" ~ "Idaho",
+            state_fips == "17" ~ "Illinois",
+            state_fips == "18" ~ "Indiana",
+            state_fips == "19" ~ "Iowa",
+            state_fips == "20" ~ "Kansas",
+            state_fips == "21" ~ "Kentucky",
+            state_fips == "22" ~ "Louisiana",
+            state_fips == "23" ~ "Maine",
+            state_fips == "24" ~ "Maryland",
+            state_fips == "25" ~ "Massachusetts",
+            state_fips == "26" ~ "Michigan",
+            state_fips == "27" ~ "Minnesota",
+            state_fips == "28" ~ "Mississippi",
+            state_fips == "29" ~ "Missouri",
+            state_fips == "30" ~ "Montana",
+            state_fips == "31" ~ "Nebraska",
+            state_fips == "32" ~ "Nevada",
+            state_fips == "33" ~ "New Hampshire",
+            state_fips == "34" ~ "New Jersey",
+            state_fips == "35" ~ "New Mexico",
+            state_fips == "36" ~ "New York",
+            state_fips == "37" ~ "North Carolina",
+            state_fips == "38" ~ "North Dakota",
+            state_fips == "39" ~ "Ohio",
+            state_fips == "40" ~ "Oklahoma",
+            state_fips == "41" ~ "Oregon",
+            state_fips == "42" ~ "Pennsylvania",
+            state_fips == "44" ~ "Rhode Island",
+            state_fips == "45" ~ "South Carolina",
+            state_fips == "46" ~ "South Dakota",
+            state_fips == "47" ~ "Tennessee",
+            state_fips == "48" ~ "Texas",
+            state_fips == "49" ~ "Utah",
+            state_fips == "50" ~ "Vermont",
+            state_fips == "51" ~ "Virginia",
+            state_fips == "53" ~ "Washington",
+            state_fips == "54" ~ "West Virginia",
+            state_fips == "55" ~ "Wisconsin",
+            state_fips == "56" ~ "Wyoming",
+            state_fips == "72" ~ "Puerto Rico",
+            TRUE ~ paste("State", state_fips)
+          )
+        ) %>%
+        select(geoid, name, state_fips, state_name)
+    }
+  }
   
   # Update counties table using UPSERT pattern
   existing_counties <- dbGetQuery(con, "SELECT geoid FROM counties")
