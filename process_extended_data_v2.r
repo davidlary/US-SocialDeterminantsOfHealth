@@ -327,9 +327,43 @@ process_extended_data_v2 <- function(data_sources,
           y_values <- county_data[[var_name]][valid_indices]
           
           # Use approx() for interpolation
-          interpolated <- approx(data_years, y_values, 
-                                xout = county_data$year, 
-                                rule = 2)  # rule 2 = constant extrapolation
+          # Check for potential issues with data
+          if (length(data_years) < 2 || length(unique(data_years)) < 2) {
+            # Skip if fewer than 2 years with valid data
+            if (verbose) {
+              print_msg(paste("Skipping interpolation for", var_name, "in county", geoid, 
+                           "- need at least two distinct years with data"), 3)
+            }
+            next
+          }
+          
+          # Check for non-numeric values that can cause conversion issues
+          if (!is.numeric(data_years) || !is.numeric(y_values)) {
+            data_years <- as.numeric(data_years)
+            y_values <- as.numeric(y_values)
+            # Skip if conversion failed
+            if (any(is.na(data_years)) || any(is.na(y_values))) {
+              if (verbose) {
+                print_msg(paste("Skipping interpolation for", var_name, "in county", geoid, 
+                             "- non-numeric values encountered"), 3)
+              }
+              next
+            }
+          }
+          
+          # Safely call approx with error handling
+          tryCatch({
+            interpolated <- approx(data_years, y_values, 
+                                  xout = county_data$year, 
+                                  rule = 2)  # rule 2 = constant extrapolation
+          }, error = function(e) {
+            if (verbose) {
+              print_msg(paste("Error in interpolation for", var_name, "in county", geoid, 
+                           ":", conditionMessage(e)), 3)
+            }
+            # Return NULL to indicate failure
+            interpolated <<- NULL
+          })
           
           # Find indices where there are NAs in original data but values in interpolated data
           na_indices <- which(is.na(county_data[[var_name]]) & !is.na(interpolated$y))
