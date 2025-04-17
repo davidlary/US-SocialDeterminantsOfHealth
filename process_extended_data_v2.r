@@ -212,29 +212,87 @@ process_extended_data_v2 <- function(data_sources,
   for (source_name in source_names) {
     source_data <- data_sources[[source_name]]
     
-    # Skip if NULL or empty
-    if (is.null(source_data) || nrow(source_data) == 0) {
-      print_msg(paste("Skipping empty source:", source_name))
+    # Skip if NULL
+    if (is.null(source_data)) {
+      print_msg(paste("Skipping NULL source:", source_name))
+      next
+    }
+    
+    # Skip if it's a data frame that's empty
+    if (is.data.frame(source_data) && nrow(source_data) == 0) {
+      print_msg(paste("Skipping empty data frame source:", source_name))
+      next
+    }
+    
+    # Skip if it's a list that's empty and not a data frame
+    if (is.list(source_data) && !is.data.frame(source_data) && length(source_data) == 0) {
+      print_msg(paste("Skipping empty list source:", source_name))
       next
     }
     
     print_msg(paste("Processing source:", source_name))
     
-    # Ensure GEOID is properly formatted
-    if ("GEOID" %in% names(source_data)) {
-      source_data$GEOID <- sprintf("%05d", as.numeric(source_data$GEOID))
+    # Check if source_data is a data frame
+    if (is.data.frame(source_data)) {
+      # Process as a data frame
+      # Ensure GEOID is properly formatted
+      if ("GEOID" %in% names(source_data)) {
+        source_data$GEOID <- sprintf("%05d", as.numeric(source_data$GEOID))
+      }
+      
+      # Get all variables from this source
+      # Exclude flags and metadata columns
+      var_cols <- grep("_data_quality$|_data_source$|_data_vintage$|GEOID|year", 
+                     names(source_data), value = TRUE, invert = TRUE)
+      
+      print_msg(paste("Found", length(var_cols), "variables in data frame"), 2)
+      
+      # Merge with base dataframe to ensure complete county-year coverage
+      merged_data <- county_years %>%
+        left_join(source_data, by = c("GEOID", "year"))
+    } else if (is.list(source_data) && !is.data.frame(source_data)) {
+      # Process as a nested list
+      print_msg(paste("Processing nested list source:", source_name), 2)
+      
+      # Initialize merged data with base
+      merged_data <- county_years
+      
+      # Process each sublist
+      for (subname in names(source_data)) {
+        subdata <- source_data[[subname]]
+        
+        if (is.data.frame(subdata) && nrow(subdata) > 0) {
+          print_msg(paste("Processing nested data frame:", subname, "with", nrow(subdata), "rows"), 2)
+          
+          # Ensure GEOID is properly formatted in subdata
+          if ("GEOID" %in% names(subdata)) {
+            subdata$GEOID <- sprintf("%05d", as.numeric(subdata$GEOID))
+          }
+          
+          # Get all variables from this subdata
+          sub_var_cols <- grep("_data_quality$|_data_source$|_data_vintage$|GEOID|year", 
+                            names(subdata), value = TRUE, invert = TRUE)
+          
+          print_msg(paste("Found", length(sub_var_cols), "variables in", subname), 2)
+          
+          # Merge with merged_data
+          merged_data <- merged_data %>%
+            left_join(subdata, by = c("GEOID", "year"))
+        } else {
+          print_msg(paste("Skipping nested item:", subname, "- not a valid data frame"), 2)
+        }
+      }
+      
+      # Calculate all variables from all merged subdata
+      var_cols <- grep("_data_quality$|_data_source$|_data_vintage$|GEOID|year", 
+                     names(merged_data), value = TRUE, invert = TRUE)
+      
+      print_msg(paste("Found total of", length(var_cols), "variables after merging nested data"), 2)
+    } else {
+      # Unknown data type - can't process
+      print_msg(paste("WARNING: Source", source_name, "has unknown data type. Skipping."), 1)
+      next
     }
-    
-    # Get all variables from this source
-    # Exclude flags and metadata columns
-    var_cols <- grep("_data_quality$|_data_source$|_data_vintage$|GEOID|year", 
-                   names(source_data), value = TRUE, invert = TRUE)
-    
-    print_msg(paste("Found", length(var_cols), "variables"), 2)
-    
-    # Merge with base dataframe to ensure complete county-year coverage
-    merged_data <- county_years %>%
-      left_join(source_data, by = c("GEOID", "year"))
     
     # Handle interpolation for each variable if needed
     if (!skip_interpolation) {
