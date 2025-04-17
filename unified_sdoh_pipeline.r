@@ -1657,6 +1657,121 @@ log_message(paste("\n=== UNIFIED SOCIAL DETERMINANTS OF HEALTH DATA PIPELINE COM
 log_message(paste("Log file saved to:", log_file),
             level = "INFO", show_console = TRUE)
 
+# Generate and display summary table of variables by year and county count
+log_message("Generating summary table of variables by year...", 
+            level = "INFO", show_console = TRUE)
+
+# Query to get variable count by year and county count
+summary_query <- "
+  SELECT 
+    year,
+    COUNT(DISTINCT variable_name) AS unique_variables,
+    COUNT(DISTINCT geoid) AS county_count,
+    COUNT(*) AS total_data_points
+  FROM sdoh_data
+  GROUP BY year
+  ORDER BY year
+"
+
+# Run the query
+summary_table <- dbGetQuery(con, summary_query)
+
+# Display the summary table
+log_message("\n=== Summary of Variables and Counties by Year ===", 
+            level = "INFO", show_console = TRUE)
+
+# Format and display the table in a nice format
+if (nrow(summary_table) > 0) {
+  # Create a formatted output
+  summary_output <- capture.output({
+    # Print header
+    cat(sprintf("%-6s | %-16s | %-12s | %-15s\n", "Year", "Unique Variables", "County Count", "Total Data Points"))
+    cat(sprintf("%-6s-|-%-16s-|-%-12s-|-%-15s\n", "------", "----------------", "------------", "---------------"))
+    
+    # Print rows
+    for (i in 1:nrow(summary_table)) {
+      cat(sprintf("%-6s | %-16s | %-12s | %-15s\n", 
+                summary_table$year[i],
+                format(summary_table$unique_variables[i], big.mark=","),
+                format(summary_table$county_count[i], big.mark=","),
+                format(summary_table$total_data_points[i], big.mark=",")))
+    }
+  })
+  
+  # Log the formatted table
+  for (line in summary_output) {
+    log_message(line, level = "INFO", show_console = TRUE)
+  }
+  
+  # Add summary statistics
+  total_variables <- length(unique(dbGetQuery(con, "SELECT DISTINCT variable_name FROM sdoh_data")$variable_name))
+  total_counties <- length(unique(dbGetQuery(con, "SELECT DISTINCT geoid FROM sdoh_data")$geoid))
+  total_years <- length(unique(dbGetQuery(con, "SELECT DISTINCT year FROM sdoh_data")$year))
+  total_data_points <- dbGetQuery(con, "SELECT COUNT(*) AS count FROM sdoh_data")$count
+  
+  log_message("\n=== Overall Dataset Statistics ===", 
+              level = "INFO", show_console = TRUE)
+  log_message(paste("Total Variables:", format(total_variables, big.mark=",")), 
+              level = "INFO", show_console = TRUE)
+  log_message(paste("Total Counties:", format(total_counties, big.mark=",")), 
+              level = "INFO", show_console = TRUE)
+  log_message(paste("Total Years:", total_years), 
+              level = "INFO", show_console = TRUE)
+  log_message(paste("Total Data Points:", format(total_data_points, big.mark=",")), 
+              level = "INFO", show_console = TRUE)
+} else {
+  log_message("No data available to summarize.", 
+              level = "WARN", show_console = TRUE)
+}
+
+# Also generate a summary by domain
+domain_query <- "
+  SELECT 
+    v.domain,
+    COUNT(DISTINCT d.variable_name) AS unique_variables,
+    COUNT(DISTINCT d.year) AS years_available,
+    COUNT(DISTINCT d.geoid) AS max_counties,
+    COUNT(*) AS total_data_points
+  FROM sdoh_data d
+  JOIN variables v ON d.variable_name = v.variable_name
+  GROUP BY v.domain
+  ORDER BY unique_variables DESC
+"
+
+# Run the domain query
+domain_table <- dbGetQuery(con, domain_query)
+
+# Display the domain summary table
+log_message("\n=== Summary of Variables by Domain ===", 
+            level = "INFO", show_console = TRUE)
+
+# Format and display the domain table
+if (nrow(domain_table) > 0) {
+  # Create a formatted output
+  domain_output <- capture.output({
+    # Print header
+    cat(sprintf("%-25s | %-16s | %-15s | %-12s | %-15s\n", 
+              "Domain", "Unique Variables", "Years Available", "Max Counties", "Total Data Points"))
+    cat(sprintf("%-25s-|-%-16s-|-%-15s-|-%-12s-|-%-15s\n", 
+              "-------------------------", "----------------", "---------------", "------------", "---------------"))
+    
+    # Print rows
+    for (i in 1:nrow(domain_table)) {
+      cat(sprintf("%-25s | %-16s | %-15s | %-12s | %-15s\n", 
+                substr(domain_table$domain[i], 1, 25),
+                format(domain_table$unique_variables[i], big.mark=","),
+                format(domain_table$years_available[i], big.mark=","),
+                format(domain_table$max_counties[i], big.mark=","),
+                format(domain_table$total_data_points[i], big.mark=",")))
+    }
+  })
+  
+  # Log the formatted domain table
+  for (line in domain_output) {
+    log_message(line, level = "INFO", show_console = TRUE)
+  }
+}
+
 # Restore console output
 sink(NULL)
 
