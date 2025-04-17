@@ -38,7 +38,7 @@ data_dir <- file.path(root_dir, "data")
 logs_dir <- file.path(root_dir, "logs")
 output_dir <- file.path(root_dir, "output")
 cache_dir <- file.path(data_dir, "cache")
-extended_data_dir <- file.path(root_dir, "extended_sdoh_pipeline", "data")
+extended_data_dir <- file.path(root_dir, "data")
 extended_cache_dir <- file.path(extended_data_dir, "cache")
 
 # Ensure directories exist
@@ -52,16 +52,14 @@ ensure_directories <- function() {
     file.path(data_dir, "nhgis"),
     file.path(data_dir, "shapefiles"),
     file.path(output_dir, "maps"),
-    extended_data_dir,
-    extended_cache_dir,
-    file.path(extended_data_dir, "built_environment"),
-    file.path(extended_data_dir, "crime"),
-    file.path(extended_data_dir, "economic"),
-    file.path(extended_data_dir, "education"),
-    file.path(extended_data_dir, "healthcare"),
-    file.path(extended_data_dir, "housing"),
-    file.path(extended_data_dir, "social_cohesion"),
-    file.path(extended_data_dir, "transportation")
+    file.path(data_dir, "built_environment"),
+    file.path(data_dir, "crime"),
+    file.path(data_dir, "economic"),
+    file.path(data_dir, "education"),
+    file.path(data_dir, "healthcare"),
+    file.path(data_dir, "housing"),
+    file.path(data_dir, "social_cohesion"),
+    file.path(data_dir, "transportation")
   )
   
   for (dir in dirs) {

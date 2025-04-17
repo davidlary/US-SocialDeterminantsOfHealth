@@ -48,7 +48,7 @@ fetch_usda_food_atlas <- function(years,
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || (exists("is_sourced") && !is_sourced())
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {

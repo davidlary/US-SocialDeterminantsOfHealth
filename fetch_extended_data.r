@@ -56,8 +56,8 @@ fetch_extended_data <- function(crosswalk,
     if (exists("log_message")) {
       log_message(message, show_console = important)
     } else {
-      # Check if running interactively or being sourced
-      is_interactive_run <- !exists("is_sourced") || !is_sourced
+      # Check if running interactively or being sourced - safer check
+      is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
       
       # Otherwise fall back to message for cleaner output
       if (is_interactive_run) {
@@ -860,8 +860,8 @@ empty_life_exp_structure <- function(counties, years) {
 fetch_life_expectancy_data <- function(years, cache_dir = "data/cache", refresh_cache = FALSE) {
   # Helper function for clean output
   print_msg <- function(msg) {
-    # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || !is_sourced
+    # Check if being run interactively - safer check
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {

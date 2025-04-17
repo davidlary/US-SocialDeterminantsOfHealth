@@ -41,8 +41,8 @@ fetch_historical_data <- function(crosswalk = NULL,
   
   # Helper function for clean output
   print_msg <- function(msg) {
-    # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || !is_sourced
+    # Check if being run interactively - safer check
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {
@@ -287,8 +287,8 @@ fetch_seer_population_data <- function(years, cache_dir = "data/cache", refresh_
                                 get_all_variables = TRUE) {
   # Helper function for clean output
   print_msg <- function(msg) {
-    # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || !is_sourced
+    # Check if being run interactively - safer check
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {
@@ -626,8 +626,8 @@ fetch_nhgis_historical_data <- function(crosswalk, years, cache_dir = "data/cach
                                 ipums_credentials = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
-    # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || !is_sourced
+    # Check if being run interactively - safer check
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {
@@ -1471,8 +1471,8 @@ fetch_nhgis_historical_data <- function(crosswalk, years, cache_dir = "data/cach
 fetch_census_historical_estimates <- function(years, cache_dir = "data/cache", refresh_cache = FALSE) {
   # Helper function for clean output
   print_msg <- function(msg) {
-    # Check if being run interactively
-    is_interactive_run <- !exists("is_sourced") || !is_sourced
+    # Check if being run interactively - safer check
+    is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
     if (is_interactive_run) {
       message(msg)
     } else {

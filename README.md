@@ -29,13 +29,32 @@ This directory contains the R scripts for the Unified Social Determinants of Hea
 
 ## Core Scripts
 
-- `unified_sdoh_pipeline.r` - Main unified pipeline script
+- `unified_sdoh_pipeline.r` - Main unified pipeline script (primary entry point)
 - `install_packages.r` - Package installation script
 - `build_extended_crosswalk.r` - Variable crosswalk builder
+- `build_extended_crosswalk_v2.r` - Enhanced variable crosswalk builder
 - `fetch_extended_data.r` - Core data fetcher
 - `fetch_nhgis_data.r` - NHGIS data fetcher
+- `fetch_historical_data.r` - Historical data fetcher
 - `process_extended_data.r` - Data processor
+- `process_extended_data_v2.r` - Enhanced data processor
 - `generate_county_maps.r` - Map generation utilities
+
+## Domain-Specific Data Fetchers
+
+- `fetch_built_environment_data.r` - Built environment metrics
+- `fetch_climate_data.r` - Climate and disaster risk metrics
+- `fetch_crime_data.r` - Crime and safety metrics
+- `fetch_digital_access_data.r` - Digital access and broadband metrics
+- `fetch_economic_data.r` - Economic indicators and metrics
+- `fetch_education_data.r` - Education metrics
+- `fetch_epa_data.r` - Environmental quality metrics
+- `fetch_healthcare_data.r` - Healthcare access metrics
+- `fetch_housing_data.r` - Housing stability metrics
+- `fetch_social_cohesion_data.r` - Social cohesion metrics
+- `fetch_substance_use_data.r` - Substance use treatment metrics
+- `fetch_transportation_data.r` - Transportation metrics
+- `fetch_usda_food_atlas.r` - Food access metrics
 
 ## Enhancement Plan
 
@@ -337,7 +356,42 @@ ORDER BY poverty_rate DESC LIMIT 10;
 3. Run `Rscript install_packages.r` to install all required dependencies
 4. Run `Rscript unified_sdoh_pipeline.r` to execute the complete pipeline
 
-All paths in the codebase are relative to the root directory, so you can place the entire project anywhere on your system without path modifications.
+### Running the Pipeline
+
+The codebase has been reorganized for improved organization and maintainability:
+
+- All R code from extended_sdoh_pipeline has been moved to the main R directory
+- All data files are consolidated in the R/data directory with appropriate category subdirectories
+- Path references have been updated to use the new directory structure
+- The unsafe is_sourced pattern has been fixed in all fetch functions to safely check types
+
+To run the pipeline:
+
+```bash
+# Navigate to the R directory
+cd /path/to/US-SocialDeterminantsOfHealth/R
+
+# Run the pipeline with default settings
+Rscript unified_sdoh_pipeline.r
+
+# Run with force update to refresh all data
+Rscript unified_sdoh_pipeline.r --force-update
+
+# Run with verbose output
+Rscript unified_sdoh_pipeline.r --verbose
+
+# Run without interpolation
+Rscript unified_sdoh_pipeline.r --skip-interpolation
+
+# Run in offline mode (using only cached data)
+Rscript unified_sdoh_pipeline.r --offline-mode
+```
+
+All paths in the codebase are relative to the R directory. The pipeline will:
+1. Create all necessary subdirectories in R/data if they don't exist
+2. Generate output files in R/output with maps in R/output/maps
+3. Store logs in R/logs with timestamps
+4. Cache downloaded data in R/data/cache for future runs
 
 ## Troubleshooting
 

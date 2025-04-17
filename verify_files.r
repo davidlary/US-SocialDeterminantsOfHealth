@@ -8,7 +8,6 @@ cat("Verifying file structure...\n")
 expected_dirs <- c(
   ".", 
   "./utilities", 
-  "./extended_sdoh_pipeline",
   "./data",
   "./output"
 )
@@ -31,7 +30,23 @@ expected_files <- c(
   "./fetch_nhgis_data.r",
   "./generate_county_maps.r",
   "./process_extended_data.r",
-  "./build_extended_crosswalk.r"
+  "./build_extended_crosswalk.r",
+  "./fetch_built_environment_data.r",
+  "./fetch_climate_data.r",
+  "./fetch_crime_data.r",
+  "./fetch_digital_access_data.r",
+  "./fetch_economic_data.r", 
+  "./fetch_education_data.r",
+  "./fetch_epa_data.r",
+  "./fetch_healthcare_data.r",
+  "./fetch_housing_data.r",
+  "./fetch_social_cohesion_data.r",
+  "./fetch_substance_use_data.r",
+  "./fetch_transportation_data.r",
+  "./fetch_usda_food_atlas.r",
+  "./main_extended_v2.r",
+  "./process_extended_data_v2.r",
+  "./build_extended_crosswalk_v2.r"
 )
 
 # Define expected utility files
@@ -44,13 +59,10 @@ expected_util_files <- c(
   "./utilities/setup_ipums_credentials.r"
 )
 
-# Define expected extended pipeline files
-expected_extended_files <- c(
-  "./extended_sdoh_pipeline/README.md",
-  "./extended_sdoh_pipeline/extended_variable_dictionary.md",
-  "./extended_sdoh_pipeline/fetch_climate_data.r",
-  "./extended_sdoh_pipeline/fetch_substance_use_data.r",
-  "./extended_sdoh_pipeline/fetch_digital_access_data.r"
+# Define expected data folder files
+expected_data_files <- c(
+  "./data/README.md",
+  "./data/extended_variable_dictionary.md"
 )
 
 # We'll work from the current directory as the project root
@@ -86,8 +98,8 @@ for (file in expected_util_files) {
   }
 }
 
-# Check extended pipeline files
-for (file in expected_extended_files) {
+# Check data folder files
+for (file in expected_data_files) {
   if (file.exists(file)) {
     cat(sprintf("✓ File exists: %s\n", file))
   } else {
@@ -96,9 +108,9 @@ for (file in expected_extended_files) {
   }
 }
 
-# Count the number of fetchers in the extended_sdoh_pipeline directory
-extended_fetchers <- list.files("./extended_sdoh_pipeline", pattern = "^fetch_.*\\.r$")
-cat(sprintf("Found %d fetcher scripts in extended_sdoh_pipeline directory\n", length(extended_fetchers)))
+# Count the number of fetchers in the R directory
+fetchers <- list.files(".", pattern = "^fetch_.*\\.r$")
+cat(sprintf("Found %d fetcher scripts in R directory\n", length(fetchers)))
 
 # Summary
 if (length(missing_files) == 0) {

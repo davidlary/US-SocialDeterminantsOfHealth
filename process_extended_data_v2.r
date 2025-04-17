@@ -41,7 +41,7 @@ process_extended_data_v2 <- function(data_sources,
     # If verbose is TRUE, print all messages
     if (verbose || detail_level == 1) {
       # Check if being run interactively
-      is_interactive_run <- !exists("is_sourced") || (exists("is_sourced") && !is_sourced())
+      is_interactive_run <- !exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)
       if (is_interactive_run) {
         message(msg)
       } else {
