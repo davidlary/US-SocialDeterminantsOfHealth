@@ -831,9 +831,9 @@ log_message("\nSTEP 3: PROCESSING AND COMBINING DATA",
 # Source core processing script
 source(file.path(root_dir, "process_extended_data.r"))
 
-# Source extended processing script if available
-if (file.exists(file.path(root_dir, "extended_sdoh_pipeline", "process_extended_data_v2.r"))) {
-  source(file.path(root_dir, "extended_sdoh_pipeline", "process_extended_data_v2.r"))
+# Source enhanced processing script 
+if (file.exists(file.path(root_dir, "process_extended_data_v2.r"))) {
+  source(file.path(root_dir, "process_extended_data_v2.r"))
 }
 
 # Show processing status message
