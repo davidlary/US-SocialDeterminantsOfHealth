@@ -287,8 +287,8 @@ log_message("STEP 1: BUILDING EXTENDED VARIABLE CROSSWALK",
 
 # Source both crosswalk builders
 source(file.path(root_dir, "build_extended_crosswalk.r"))
-if (file.exists(file.path(root_dir, "extended_sdoh_pipeline", "build_extended_crosswalk_v2.r"))) {
-  source(file.path(root_dir, "extended_sdoh_pipeline", "build_extended_crosswalk_v2.r"))
+if (file.exists(file.path(root_dir, "build_extended_crosswalk_v2.r"))) {
+  source(file.path(root_dir, "build_extended_crosswalk_v2.r"))
 }
 
 # First build the original crosswalk
