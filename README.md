@@ -363,7 +363,11 @@ The codebase has been reorganized for improved organization and maintainability:
 - All R code from extended_sdoh_pipeline has been moved to the main R directory
 - All data files are consolidated in the R/data directory with appropriate category subdirectories
 - Path references have been updated to use the new directory structure
-- The unsafe is_sourced pattern has been fixed in all fetch functions to safely check types
+- The unsafe is_sourced pattern has been fixed in all fetch functions: 
+  - Changed `!exists("is_sourced") || !is_sourced` to `!exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)`
+  - Changed `!exists("is_sourced") || (exists("is_sourced") && !is_sourced())` to `!exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)`
+  - This prevents type errors when `is_sourced` exists but is not a logical value
+- Removed redundant main_extended.r and main_extended_v2.r files as they've been superseded by unified_sdoh_pipeline.r
 
 To run the pipeline:
 
