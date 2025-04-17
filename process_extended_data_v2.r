@@ -71,8 +71,20 @@ process_extended_data_v2 <- function(data_sources,
   # Count data rows in each source
   for (source_name in source_names) {
     source_data <- data_sources[[source_name]]
-    if (!is.null(source_data) && nrow(source_data) > 0) {
+    # Check if source_data is a data frame (or tibble) and has rows
+    if (!is.null(source_data) && is.data.frame(source_data) && nrow(source_data) > 0) {
       print_msg(paste(source_name, ":", nrow(source_data), "rows"), 2)
+    } else if (!is.null(source_data) && is.list(source_data) && !is.data.frame(source_data)) {
+      # Handle nested lists (like Census)
+      print_msg(paste(source_name, ": Nested data structure"), 2)
+      for (subname in names(source_data)) {
+        subdata <- source_data[[subname]]
+        if (is.data.frame(subdata) && nrow(subdata) > 0) {
+          print_msg(paste("  -", subname, ":", nrow(subdata), "rows"), 2)
+        } else {
+          print_msg(paste("  -", subname, ": No data or empty dataframe"), 2)
+        }
+      }
     } else {
       print_msg(paste(source_name, ": No data or empty dataframe"), 2)
     }
@@ -85,7 +97,9 @@ process_extended_data_v2 <- function(data_sources,
   all_counties <- NULL
   for (source_name in source_names) {
     source_data <- data_sources[[source_name]]
-    if (!is.null(source_data) && nrow(source_data) > 0 && "GEOID" %in% names(source_data)) {
+    
+    # First handle direct data frames
+    if (!is.null(source_data) && is.data.frame(source_data) && nrow(source_data) > 0 && "GEOID" %in% names(source_data)) {
       source_counties <- source_data %>%
         distinct(GEOID) %>%
         pull(GEOID)
@@ -94,6 +108,23 @@ process_extended_data_v2 <- function(data_sources,
         all_counties <- source_counties
       } else {
         all_counties <- union(all_counties, source_counties)
+      }
+    }
+    # Then handle nested lists (like Census)
+    else if (!is.null(source_data) && is.list(source_data) && !is.data.frame(source_data)) {
+      for (subname in names(source_data)) {
+        subdata <- source_data[[subname]]
+        if (is.data.frame(subdata) && nrow(subdata) > 0 && "GEOID" %in% names(subdata)) {
+          source_counties <- subdata %>%
+            distinct(GEOID) %>%
+            pull(GEOID)
+          
+          if (is.null(all_counties)) {
+            all_counties <- source_counties
+          } else {
+            all_counties <- union(all_counties, source_counties)
+          }
+        }
       }
     }
   }
