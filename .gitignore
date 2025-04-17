@@ -1,0 +1,34 @@
+# R specific ignores
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Large data files
+data/cdc_places/*.csv
+data/epa/tri/*.csv
+data/epa/*.csv
+data/epa/*.zip
+data/ihme/CSV/*.CSV
+data/ihme/Docs/*.PDF
+data/ihme/Docs/*.XLSX
+data/nhgis/*.CSV
+data/seer/*.gz
+data/usda_food_atlas/*.csv
+data/usda_food_atlas/*.xls
+
+# Database files
+*.duckdb
+*.duckdb.wal
+
+# Cache and generated files
+data/cache/*
+output/maps/*
+logs/*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Allow .gitkeep files in otherwise empty directories
+!**/.gitkeep

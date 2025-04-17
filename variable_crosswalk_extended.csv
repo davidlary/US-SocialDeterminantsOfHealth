@@ -1,0 +1,81 @@
+variable_name,acs_var,dec_2020_var,dec_2010_var,dec_2000_var,pep_var,category,description,nhgis_var,cdc_places_var,available_in_acs,available_in_decennial,available_in_pep,available_in_nhgis,available_in_places,interpolate_recommended,preferred_source,years_available,extend_backwards,extend_method
+total_population,B01003_001E,P1_001N,P003001,P001001,POP,Demographics,Total population,TOTPOP,NA,TRUE,TRUE,TRUE,TRUE,FALSE,TRUE,IPUMS NHGIS,2009-2021,FALSE,NA
+median_age,B01002_001E,P13_001N,P013001,P013001,NA,Demographics,Median age (years),MEDAGE,NA,TRUE,TRUE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,2009-2021,FALSE,NA
+male_population,B01001_002E,P1_002N,P012002,P012002,NA,Demographics,Male population,MALE,NA,TRUE,TRUE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,2009-2021,FALSE,NA
+female_population,B01001_026E,P1_026N,P012026,P012026,NA,Demographics,Female population,FEMALE,NA,TRUE,TRUE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,2009-2021,FALSE,NA
+population_under_18,B01001_003E,NA,NA,NA,NA,Demographics,Population under 18 years of age,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+population_65_over,B01001_020E,NA,NA,NA,NA,Demographics,Population 65 years and over,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+white_nonhispanic_pct,DP05_0077PE,NA,NA,NA,NA,Race/Ethnicity,"White alone, not Hispanic or Latino, percent",NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+black_pct,DP05_0065PE,NA,NA,NA,NA,Race/Ethnicity,"Black or African American alone, percent",NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+hispanic_latino_pct,DP05_0071PE,NA,NA,NA,NA,Race/Ethnicity,"Hispanic or Latino, percent",NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+asian_pct,DP05_0067PE,NA,NA,NA,NA,Race/Ethnicity,"Asian alone, percent",NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+native_american_pct,DP05_0066PE,NA,NA,NA,NA,Race/Ethnicity,"American Indian and Alaska Native alone, percent",NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+median_household_income,B19013_001E,NA,NA,NA,NA,Socioeconomic,Median household income (dollars),NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+poverty_rate,S1701_C03_001E,NA,NA,NA,NA,Socioeconomic,Percentage of population below poverty level,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+gini_index,B19083_001E,NA,NA,NA,NA,Socioeconomic,Income inequality (Gini Index),NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+snap_benefits_pct,S2201_C04_001E,NA,NA,NA,NA,Socioeconomic,Percentage of households receiving SNAP benefits,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+less_than_highschool_pct,B15003_002E,NA,NA,NA,NA,Education,Percentage of population 25+ with less than high school education,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+highschool_only_pct,B15003_017E,NA,NA,NA,NA,Education,Percentage of population 25+ with high school degree only,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+some_college_pct,B15003_018E,NA,NA,NA,NA,Education,Percentage of population 25+ with some college or associate's degree,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+bachelors_or_higher_pct,B15003_022E,NA,NA,NA,NA,Education,Percentage of population 25+ with bachelor's degree or higher,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+median_home_value,B25077_001E,NA,NA,NA,NA,Housing,Median value of owner-occupied housing units,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+median_gross_rent,B25064_001E,NA,NA,NA,NA,Housing,Median gross rent,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+homeownership_rate,DP04_0046PE,NA,NA,NA,NA,Housing,Homeownership rate,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+vacant_housing_rate,DP04_0003PE,NA,NA,NA,NA,Housing,Vacant housing rate,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+unemployment_rate,DP03_0009PE,NA,NA,NA,NA,Employment,Unemployment rate,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+labor_force_participation,DP03_0002PE,NA,NA,NA,NA,Employment,Labor force participation rate,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+median_earnings,B20017_001E,NA,NA,NA,NA,Employment,Median earnings for workers,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+mean_commute_time,DP03_0025E,NA,NA,NA,NA,Transportation,Mean travel time to work (minutes),NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+commute_public_transit_pct,DP03_0021PE,NA,NA,NA,NA,Transportation,Percentage commuting by public transportation,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+no_vehicle_households_pct,DP04_0058PE,NA,NA,NA,NA,Transportation,Percentage of households with no vehicle available,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+commute_carpool_pct,DP03_0019PE,NA,NA,NA,NA,Transportation,Percentage commuting by carpool,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+commute_walking_pct,DP03_0023PE,NA,NA,NA,NA,Transportation,Percentage commuting by walking,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+commute_long_pct,DP03_0034PE,NA,NA,NA,NA,Transportation,Percentage with commute of 60 minutes or more,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+uninsured_pct,S2701_C05_001E,NA,NA,NA,NA,Health Insurance,Percentage without health insurance,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+private_health_insurance_pct,S2701_C03_001E,NA,NA,NA,NA,Health Insurance,Percentage with private health insurance,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+public_health_insurance_pct,S2701_C04_001E,NA,NA,NA,NA,Health Insurance,Percentage with public health insurance,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+medicaid_pct,S2704_C05_001E,NA,NA,NA,NA,Health Insurance,Percentage with Medicaid/means-tested public coverage,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+medicare_pct,S2704_C04_001E,NA,NA,NA,NA,Health Insurance,Percentage with Medicare coverage,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+single_parent_households_pct,B09002_002E,NA,NA,NA,NA,Social Factors,Percentage of households with single parent,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+limited_english_pct,S1602_C03_001E,NA,NA,NA,NA,Social Factors,Percentage with limited English proficiency,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+broadband_access_pct,S2801_C01_012E,NA,NA,NA,NA,Social Factors,Percentage with broadband internet access,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+grandparents_caregivers_pct,B10051_003E,NA,NA,NA,NA,Social Factors,Percentage of grandparents responsible for their grandchildren,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+internet_access_pct,S2801_C01_001E,NA,NA,NA,NA,Social Factors,Percentage of households with internet access,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+computer_access_pct,S2801_C01_002E,NA,NA,NA,NA,Social Factors,Percentage of households with a computer,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+non_english_home_pct,DP02_0113PE,NA,NA,NA,NA,Social Factors,Percentage speaking language other than English at home,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+disability_pct,S1810_C02_001E,NA,NA,NA,NA,Disability,Percentage of civilian noninstitutionalized population with a disability,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+disability_under_18_pct,S1810_C02_002E,NA,NA,NA,NA,Disability,Percentage of population under 18 with a disability,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+disability_18_64_pct,S1810_C02_003E,NA,NA,NA,NA,Disability,Percentage of population 18 to 64 with a disability,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+disability_65_over_pct,S1810_C02_004E,NA,NA,NA,NA,Disability,Percentage of population 65 and over with a disability,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+cognitive_disability_pct,S1810_C02_006E,NA,NA,NA,NA,Disability,Percentage with cognitive difficulty,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+ambulatory_disability_pct,S1810_C02_007E,NA,NA,NA,NA,Disability,Percentage with ambulatory difficulty,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+independent_living_disability_pct,S1810_C02_009E,NA,NA,NA,NA,Disability,Percentage with independent living difficulty,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+severe_housing_cost_burden,B25070_010E,NA,NA,NA,NA,Environmental,Percentage with severe housing cost burden,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+overcrowded_housing_pct,DP04_0078PE,NA,NA,NA,NA,Environmental,Percentage of housing units with more than 1 person per room,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+housing_no_kitchen_pct,DP04_0067PE,NA,NA,NA,NA,Environmental,Percentage of housing units lacking complete kitchen facilities,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+housing_no_plumbing_pct,DP04_0066PE,NA,NA,NA,NA,Environmental,Percentage of housing units lacking complete plumbing facilities,NA,NA,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,ACS 5-Year,2009-2021,FALSE,NA
+population_density,NA,NA,NA,NA,NA,Demographics,Population per square mile,POPDENSM,NA,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,1990-2020 (varies),FALSE,NA
+air_pollution_pm25,NA,NA,NA,NA,NA,Environmental,Fine particulate matter levels,PM25,NA,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,1990-2020 (varies),FALSE,NA
+food_insecurity_pct,NA,NA,NA,NA,NA,Environmental,Percentage with food insecurity,FOODINS,NA,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,1990-2020 (varies),FALSE,NA
+physical_inactivity_pct,NA,NA,NA,NA,NA,Health Behaviors,Percentage physically inactive,INACTIVE,NA,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE,IPUMS NHGIS,1990-2020 (varies),FALSE,NA
+severe_housing_problems,NA,NA,NA,NA,NA,Housing,Percentage of households with severe housing problems,HOUSING,NA,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE,IPUMS NHGIS,1990-2020 (varies),FALSE,NA
+annual_checkup_pct,NA,NA,NA,NA,NA,Health Access,Percentage with annual checkup,NA,CHECKUP,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE,CDC PLACES,2019-2021,TRUE,constant
+dental_visit_pct,NA,NA,NA,NA,NA,Health Access,Percentage with dental visit in past year,NA,DENTAL,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE,CDC PLACES,2019-2021,TRUE,constant
+poor_physical_health_pct,NA,NA,NA,NA,NA,Health Status,Percentage with poor physical health,NA,PHLTH,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+poor_mental_health_pct,NA,NA,NA,NA,NA,Health Status,Percentage with poor mental health,NA,MHLTH,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+depression_pct,NA,NA,NA,NA,NA,Health Status,Percentage with depression,NA,DEPRESSION,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+obesity_pct,NA,NA,NA,NA,NA,Health Status,Percentage with obesity,NA,OBESITY,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+diabetes_pct,NA,NA,NA,NA,NA,Health Status,Percentage with diabetes,NA,DIABETES,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+high_blood_pressure_pct,NA,NA,NA,NA,NA,Health Status,Percentage with high blood pressure,NA,BPHIGH,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+high_cholesterol_pct,NA,NA,NA,NA,NA,Health Status,Percentage with high cholesterol,NA,HIGHCHOL,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+asthma_pct,NA,NA,NA,NA,NA,Health Status,Percentage with asthma,NA,CASTHMA,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+arthritis_pct,NA,NA,NA,NA,NA,Health Status,Percentage with arthritis,NA,ARTHRITIS,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+cancer_pct,NA,NA,NA,NA,NA,Health Status,Percentage with cancer history,NA,CANCER,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+copd_pct,NA,NA,NA,NA,NA,Health Status,Percentage with COPD,NA,COPD,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+kidney_disease_pct,NA,NA,NA,NA,NA,Health Status,Percentage with kidney disease,NA,KIDNEY,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+coronary_heart_disease_pct,NA,NA,NA,NA,NA,Health Status,Percentage with coronary heart disease,NA,CHD,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+stroke_pct,NA,NA,NA,NA,NA,Health Status,Percentage with stroke history,NA,STROKE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+smoking_pct,NA,NA,NA,NA,NA,Health Behaviors,Percentage who smoke,NA,CSMOKING,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+binge_drinking_pct,NA,NA,NA,NA,NA,Health Behaviors,Percentage who binge drink,NA,BINGE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+insufficient_sleep_pct,NA,NA,NA,NA,NA,Health Behaviors,Percentage with insufficient sleep,NA,SLEEP,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,CDC PLACES,2019-2021,TRUE,constant
+no_health_insurance_pct,NA,NA,NA,NA,NA,Health Insurance,Current lack of health insurance among adults aged 18-64 years,NA,ACCESS2,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE,CDC PLACES,2019-2021,FALSE,NA

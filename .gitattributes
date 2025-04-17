@@ -1,0 +1,11 @@
+data/ihme/Docs/*.PDF filter=lfs diff=lfs merge=lfs -text
+data/ihme/Docs/*.XLSX filter=lfs diff=lfs merge=lfs -text
+data/seer/*.gz filter=lfs diff=lfs merge=lfs -text
+data/cdc_places/*.csv filter=lfs diff=lfs merge=lfs -text
+data/epa/*.csv filter=lfs diff=lfs merge=lfs -text
+data/ihme/CSV/*.CSV filter=lfs diff=lfs merge=lfs -text
+data/nhgis/*.CSV filter=lfs diff=lfs merge=lfs -text
+data/usda_food_atlas/*.csv filter=lfs diff=lfs merge=lfs -text
+data/usda_food_atlas/*.xls filter=lfs diff=lfs merge=lfs -text
+data/epa/tri/*.csv filter=lfs diff=lfs merge=lfs -text
+data/epa/*.zip filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,81 @@
+variable_name,description,category,variable_type,preferred_source,years_available,interpolate_recommended,extend_backwards,extend_method,limitations
+total_population,Total population,Demographics,Count,IPUMS NHGIS,2009-2021,TRUE,FALSE,NA,
+median_age,Median age (years),Demographics,Currency ($) or Count,IPUMS NHGIS,2009-2021,TRUE,FALSE,NA,
+male_population,Male population,Demographics,Count,IPUMS NHGIS,2009-2021,TRUE,FALSE,NA,
+female_population,Female population,Demographics,Count,IPUMS NHGIS,2009-2021,TRUE,FALSE,NA,
+population_under_18,Population under 18 years of age,Demographics,Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+population_65_over,Population 65 years and over,Demographics,Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+white_nonhispanic_pct,"White alone, not Hispanic or Latino, percent",Race/Ethnicity,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+black_pct,"Black or African American alone, percent",Race/Ethnicity,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+hispanic_latino_pct,"Hispanic or Latino, percent",Race/Ethnicity,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+asian_pct,"Asian alone, percent",Race/Ethnicity,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+native_american_pct,"American Indian and Alaska Native alone, percent",Race/Ethnicity,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+median_household_income,Median household income (dollars),Socioeconomic,Currency ($) or Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+poverty_rate,Percentage of population below poverty level,Socioeconomic,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+gini_index,Income inequality (Gini Index),Socioeconomic,Varies,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+snap_benefits_pct,Percentage of households receiving SNAP benefits,Socioeconomic,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+less_than_highschool_pct,Percentage of population 25+ with less than high school education,Education,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+highschool_only_pct,Percentage of population 25+ with high school degree only,Education,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+some_college_pct,Percentage of population 25+ with some college or associate's degree,Education,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+bachelors_or_higher_pct,Percentage of population 25+ with bachelor's degree or higher,Education,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+median_home_value,Median value of owner-occupied housing units,Housing,Currency ($) or Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+median_gross_rent,Median gross rent,Housing,Currency ($) or Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+homeownership_rate,Homeownership rate,Housing,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+vacant_housing_rate,Vacant housing rate,Housing,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+unemployment_rate,Unemployment rate,Employment,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+labor_force_participation,Labor force participation rate,Employment,Varies,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+median_earnings,Median earnings for workers,Employment,Currency ($) or Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+mean_commute_time,Mean travel time to work (minutes),Transportation,Currency ($) or Count,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+commute_public_transit_pct,Percentage commuting by public transportation,Transportation,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+no_vehicle_households_pct,Percentage of households with no vehicle available,Transportation,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+commute_carpool_pct,Percentage commuting by carpool,Transportation,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+commute_walking_pct,Percentage commuting by walking,Transportation,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+commute_long_pct,Percentage with commute of 60 minutes or more,Transportation,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+uninsured_pct,Percentage without health insurance,Health Insurance,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+private_health_insurance_pct,Percentage with private health insurance,Health Insurance,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+public_health_insurance_pct,Percentage with public health insurance,Health Insurance,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+medicaid_pct,Percentage with Medicaid/means-tested public coverage,Health Insurance,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+medicare_pct,Percentage with Medicare coverage,Health Insurance,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+single_parent_households_pct,Percentage of households with single parent,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+limited_english_pct,Percentage with limited English proficiency,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+broadband_access_pct,Percentage with broadband internet access,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+grandparents_caregivers_pct,Percentage of grandparents responsible for their grandchildren,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+internet_access_pct,Percentage of households with internet access,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+computer_access_pct,Percentage of households with a computer,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+non_english_home_pct,Percentage speaking language other than English at home,Social Factors,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+disability_pct,Percentage of civilian noninstitutionalized population with a disability,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+disability_under_18_pct,Percentage of population under 18 with a disability,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+disability_18_64_pct,Percentage of population 18 to 64 with a disability,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+disability_65_over_pct,Percentage of population 65 and over with a disability,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+cognitive_disability_pct,Percentage with cognitive difficulty,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+ambulatory_disability_pct,Percentage with ambulatory difficulty,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+independent_living_disability_pct,Percentage with independent living difficulty,Disability,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+severe_housing_cost_burden,Percentage with severe housing cost burden,Environmental,Varies,ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+overcrowded_housing_pct,Percentage of housing units with more than 1 person per room,Environmental,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+housing_no_kitchen_pct,Percentage of housing units lacking complete kitchen facilities,Environmental,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+housing_no_plumbing_pct,Percentage of housing units lacking complete plumbing facilities,Environmental,Percentage (0-100),ACS 5-Year,2009-2021,TRUE,FALSE,NA,
+population_density,Population per square mile,Demographics,Count,IPUMS NHGIS,1990-2020 (varies),TRUE,FALSE,NA,
+air_pollution_pm25,Fine particulate matter levels,Environmental,Varies,IPUMS NHGIS,1990-2020 (varies),TRUE,FALSE,NA,
+food_insecurity_pct,Percentage with food insecurity,Environmental,Percentage (0-100),IPUMS NHGIS,1990-2020 (varies),TRUE,FALSE,NA,
+physical_inactivity_pct,Percentage physically inactive,Health Behaviors,Percentage (0-100),IPUMS NHGIS,1990-2020 (varies),FALSE,FALSE,NA,
+severe_housing_problems,Percentage of households with severe housing problems,Housing,Varies,IPUMS NHGIS,1990-2020 (varies),TRUE,FALSE,NA,
+annual_checkup_pct,Percentage with annual checkup,Health Access,Percentage (0-100),CDC PLACES,2019-2021,TRUE,TRUE,constant,
+dental_visit_pct,Percentage with dental visit in past year,Health Access,Percentage (0-100),CDC PLACES,2019-2021,TRUE,TRUE,constant,
+poor_physical_health_pct,Percentage with poor physical health,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+poor_mental_health_pct,Percentage with poor mental health,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+depression_pct,Percentage with depression,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+obesity_pct,Percentage with obesity,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+diabetes_pct,Percentage with diabetes,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+high_blood_pressure_pct,Percentage with high blood pressure,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+high_cholesterol_pct,Percentage with high cholesterol,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+asthma_pct,Percentage with asthma,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+arthritis_pct,Percentage with arthritis,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+cancer_pct,Percentage with cancer history,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+copd_pct,Percentage with COPD,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+kidney_disease_pct,Percentage with kidney disease,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+coronary_heart_disease_pct,Percentage with coronary heart disease,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+stroke_pct,Percentage with stroke history,Health Status,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+smoking_pct,Percentage who smoke,Health Behaviors,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+binge_drinking_pct,Percentage who binge drink,Health Behaviors,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+insufficient_sleep_pct,Percentage with insufficient sleep,Health Behaviors,Percentage (0-100),CDC PLACES,2019-2021,FALSE,TRUE,constant,Only available in recent years; values for earlier years are extended from earliest available data.
+no_health_insurance_pct,Current lack of health insurance among adults aged 18-64 years,Health Insurance,Percentage (0-100),CDC PLACES,2019-2021,TRUE,FALSE,NA,
