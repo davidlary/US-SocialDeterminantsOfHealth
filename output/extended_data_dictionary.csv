@@ -1,4 +1,14 @@
 variable_name,description,domain,type,source,min_year,max_year,units
+traffic_fatality_count,Total number of traffic-related deaths,Traffic Safety,numeric_count,NHTSA FARS/CDC WONDER,1975,2023,count
+traffic_fatality_rate_per_100k,"Traffic fatality rate per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS/CDC WONDER,1975,2023,count/100k
+traffic_injury_count,Total number of traffic-related injuries,Traffic Safety,numeric_count,NHTSA FARS,1975,2023,count
+traffic_injury_rate_per_100k,"Traffic injury rate per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS,1975,2023,count/100k
+ped_bike_fatality_count,Pedestrian and cyclist fatalities,Traffic Safety,numeric_count,NHTSA FARS,1975,2023,count
+ped_bike_fatality_rate_per_100k,"Pedestrian and cyclist fatality rate per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS,1975,2023,count/100k
+dui_fatality_count,Alcohol-related traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS,1975,2023,count
+dui_fatality_rate_per_100k,"Alcohol-related fatality rate per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS,1975,2023,count/100k
+speeding_fatality_count,Speeding-related traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS,1975,2023,count
+speeding_fatality_rate_per_100k,"Speeding-related fatality rate per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS,1975,2023,count/100k
 employment_access_index,Access to employment centers,Built Environment,numeric_index,EPA Smart Location Database,2010,2021,index
 housing_density,Housing units per acre of developed land,Built Environment,numeric_density,EPA Smart Location Database,2010,2021,units/acre
 land_use_diversity,Mix of land uses (entropy index),Built Environment,numeric_index,EPA Smart Location Database,2010,2021,index

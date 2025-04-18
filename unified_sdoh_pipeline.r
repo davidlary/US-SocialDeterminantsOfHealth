@@ -59,7 +59,8 @@ ensure_directories <- function() {
     file.path(data_dir, "healthcare"),
     file.path(data_dir, "housing"),
     file.path(data_dir, "social_cohesion"),
-    file.path(data_dir, "transportation")
+    file.path(data_dir, "transportation"),
+    file.path(data_dir, "traffic_safety")
   )
   
   for (dir in dirs) {
@@ -349,16 +350,38 @@ extended_fetchers <- c(
   # New specialized data sources
   "fetch_climate_data.r",
   "fetch_substance_use_data.r",
-  "fetch_digital_access_data.r"
+  "fetch_digital_access_data.r",
+  # Traffic safety data
+  "fetch_traffic_safety_data.r"
 )
 
 for (fetcher in extended_fetchers) {
-  fetcher_path <- file.path(root_dir, "extended_sdoh_pipeline", fetcher)
+  # First check the root directory
+  fetcher_path <- file.path(root_dir, fetcher)
   if (file.exists(fetcher_path)) {
-    log_message(paste("Loading extended fetcher:", fetcher), level = "INFO")
-    source(fetcher_path)
+    log_message(paste("Loading fetcher from root directory:", fetcher), level = "INFO")
+    # Use tryCatch to handle any errors during source
+    tryCatch({
+      source(fetcher_path)
+    }, error = function(e) {
+      log_message(paste("Error loading fetcher:", fetcher, "-", conditionMessage(e)), 
+                level = "ERROR", show_console = TRUE)
+    })
   } else {
-    log_message(paste("Extended fetcher not found:", fetcher), level = "WARN")
+    # Then check the extended_sdoh_pipeline directory
+    fetcher_path <- file.path(root_dir, "extended_sdoh_pipeline", fetcher)
+    if (file.exists(fetcher_path)) {
+      log_message(paste("Loading extended fetcher:", fetcher), level = "INFO")
+      # Use tryCatch to handle any errors during source
+      tryCatch({
+        source(fetcher_path)
+      }, error = function(e) {
+        log_message(paste("Error loading extended fetcher:", fetcher, "-", conditionMessage(e)), 
+                  level = "ERROR", show_console = TRUE)
+      })
+    } else {
+      log_message(paste("Fetcher not found:", fetcher), level = "WARN")
+    }
   }
 }
 
@@ -777,6 +800,14 @@ if (exists("fetch_digital_access_data")) {
   extended_data_sources$digital_access <- safe_fetch_extended(
     "Digital access and broadband data", 
     fetch_digital_access_data
+  )
+}
+
+# Traffic safety data
+if (exists("fetch_traffic_safety_data")) {
+  extended_data_sources$traffic_safety <- safe_fetch_extended(
+    "Traffic safety and accident data", 
+    fetch_traffic_safety_data
   )
 }
 

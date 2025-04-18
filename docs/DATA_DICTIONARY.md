@@ -46,8 +46,9 @@ Modern variables from more recent years (2000-present) are primarily sourced fro
 | Healthcare Access | 10 | HRSA Area Health Resources Files, CMS |
 | Housing | 11 | HUD CHAS, Eviction Lab, Federal Reserve HMDA |
 | Social Cohesion & Capital | 6 | County Health Rankings, MIT Election Data |
+| Traffic Safety | 10 | NHTSA FARS, CDC WONDER |
 | Transportation | 7 | National Transit Database, All Transit Database |
-| **Total** | **98** | |
+| **Total** | **108** | |
 
 ## Crime & Safety Data
 
@@ -193,6 +194,27 @@ The Bureau of Justice Statistics provides county-level jail incarceration data, 
 | social_association_rate | Social associations per 10,000 population | County Health Rankings | 2014-2023 | count/10k |
 | voter_registration_rate | Voter registration as percentage of eligible population | MIT Election Data and Science Lab | 2000-2022 | percent |
 | voter_turnout_rate | Voter turnout rate in general elections | MIT Election Data and Science Lab | 2000-2022 | percent |
+
+## Traffic Safety Data
+
+| Variable Name | Description | Source | Years Available | Units |
+|---------------|-------------|--------|-----------------|-------|
+| traffic_fatality_count | Total number of traffic-related deaths | NHTSA FARS/CDC WONDER | 1975-2023 | count |
+| traffic_fatality_rate_per_100k | Traffic fatality rate per 100,000 population | NHTSA FARS/CDC WONDER | 1975-2023 | count/100k |
+| traffic_injury_count | Total number of traffic-related injuries | NHTSA FARS | 1975-2023 | count |
+| traffic_injury_rate_per_100k | Traffic injury rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
+| ped_bike_fatality_count | Pedestrian and cyclist fatalities | NHTSA FARS | 1975-2023 | count |
+| ped_bike_fatality_rate_per_100k | Pedestrian and cyclist fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
+| dui_fatality_count | Alcohol-related traffic fatalities | NHTSA FARS | 1975-2023 | count |
+| dui_fatality_rate_per_100k | Alcohol-related fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
+| speeding_fatality_count | Speeding-related traffic fatalities | NHTSA FARS | 1975-2023 | count |
+| speeding_fatality_rate_per_100k | Speeding-related fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
+
+### NHTSA Fatality Analysis Reporting System (FARS)
+The National Highway Traffic Safety Administration's Fatality Analysis Reporting System (FARS) provides detailed data on all vehicle crashes in the United States that result in a fatality. The database includes information on different types of fatalities (total, pedestrian/cyclist, alcohol-related, speeding-related) at the county level.
+
+### CDC WONDER
+The CDC WONDER Multiple Cause of Death database provides county-level mortality data including transportation-related deaths (classified by ICD-10 codes V01-V99). This data serves as a supplementary source for traffic fatality information.
 
 ## Transportation Data
 
