@@ -296,13 +296,43 @@ fetch_nhgis_historical_data <- function(crosswalk, years, cache_dir = "data/cach
     # Set up extract request
     tryCatch({
       print_msg("Setting up NHGIS extract request...")
-      extract_request <- ipumsr::define_extract_nhgis(
+      
+      # Check for the correct parameter names in the define_extract_nhgis function
+      nhgis_args <- formals(ipumsr::define_extract_nhgis)
+      
+      # Dynamically determine the correct parameter names
+      time_param <- if("time_periods" %in% names(nhgis_args)) {
+        "time_periods"
+      } else if("years" %in% names(nhgis_args)) {
+        "years"
+      } else {
+        # Default to years as it's the most likely
+        "years"
+      }
+      
+      geog_param <- if("geog_levels" %in% names(nhgis_args)) {
+        "geog_levels"
+      } else if("geo_levels" %in% names(nhgis_args)) {
+        "geo_levels"
+      } else if("geographic_levels" %in% names(nhgis_args)) {
+        "geographic_levels"
+      } else {
+        # Default to geographic_levels as it's most descriptive
+        "geographic_levels"
+      }
+      
+      print_msg(paste("Using parameters:", time_param, "and", geog_param))
+      
+      # Construct the function call dynamically
+      extract_args <- list(
         description = paste0("County SDOH Data ", min(years), "-", max(years)),
-        time_periods = years,
-        geog_levels = "county",
         datasets = datasets,
         data_format = "csv"
       )
+      extract_args[[time_param]] <- years
+      extract_args[[geog_param]] <- "county"
+      
+      extract_request <- do.call(ipumsr::define_extract_nhgis, extract_args)
       
       # Add variable selections if available
       if (!is.null(required_vars) && length(required_vars) > 0) {

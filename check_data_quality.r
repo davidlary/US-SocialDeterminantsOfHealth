@@ -301,10 +301,6 @@ check_data_quality <- function(db_path = "us_county_sdoh_data.duckdb",
     }
   }
   
-  # Close database connection
-  dbDisconnect(con)
-  message("Database connection closed")
-  
   # Create a comprehensive report file
   if (output_csv) {
     report_file <- file.path(output_dir, "data_quality_report.md")
@@ -531,6 +527,10 @@ check_data_quality <- function(db_path = "us_county_sdoh_data.duckdb",
     # Write the report file
     writeLines(report_content, report_file)
   }
+  
+  # Close database connection
+  dbDisconnect(con)
+  message("Database connection closed")
   
   # Return the results
   return(results)

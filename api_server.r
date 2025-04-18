@@ -36,7 +36,10 @@ config <- list(
   row_limit = 10000,  # Maximum rows to return in a single request
   enable_cors = TRUE,
   api_keys = NULL,  # Leave NULL for no authentication
-  log_requests = TRUE
+  log_requests = TRUE,
+  query_timeout = 30,  # Default query timeout in seconds
+  max_download_rows = 100000,  # Maximum rows for download endpoint
+  reconnect_attempts = 3  # Number of reconnection attempts before failure
 )
 
 #' Initialize the API server connection pool and cache
@@ -49,15 +52,36 @@ config <- list(
 initialize_api <- function(
   db_path = config$db_path,
   cache_size = config$cache_size,
-  cache_timeout = config$cache_timeout
+  cache_timeout = config$cache_timeout,
+  reconnect_attempts = config$reconnect_attempts
 ) {
-  # Create connection to DuckDB
-  tryCatch({
-    con <- dbConnect(duckdb::duckdb(), dbdir = db_path)
-    message("Connected to database: ", db_path)
-  }, error = function(e) {
-    stop("Error connecting to database: ", e$message)
-  })
+  # Create connection to DuckDB with retry logic
+  con <- NULL
+  last_error <- NULL
+  
+  for (attempt in 1:reconnect_attempts) {
+    tryCatch({
+      con <- dbConnect(duckdb::duckdb(), dbdir = db_path)
+      # Test connection with a simple query
+      dbGetQuery(con, "SELECT 1 AS test")
+      message("Connected to database: ", db_path, " (attempt ", attempt, ")")
+      last_error <- NULL
+      break  # Connection successful, exit the loop
+    }, error = function(e) {
+      last_error <- e
+      message("Database connection attempt ", attempt, " failed: ", e$message)
+      if (attempt < reconnect_attempts) {
+        message("Retrying in 2 seconds...")
+        Sys.sleep(2)  # Wait before retrying
+      }
+    })
+  }
+  
+  # If all attempts failed, stop with error
+  if (is.null(con)) {
+    stop("Failed to connect to database after ", reconnect_attempts, " attempts. Last error: ", 
+         if (!is.null(last_error)) last_error$message else "Unknown error")
+  }
   
   # Set up query cache
   cache <- cachem::cache_mem(
@@ -66,14 +90,38 @@ initialize_api <- function(
     max_age = cache_timeout
   )
   
-  # Memoize database functions with cache
+  # Memoize database functions with cache and timeout protection
   query_db <- memoise::memoise(
-    function(query, params = NULL) {
-      if (is.null(params)) {
-        dbGetQuery(con, query)
-      } else {
-        dbGetQuery(con, glue_sql(query, .con = con, .envir = params))
-      }
+    function(query, params = NULL, timeout = 30) {
+      result <- NULL
+      error <- NULL
+      
+      tryCatch({
+        # Set timeout context if available
+        if (exists("setTimeLimit")) {
+          setTimeLimit(cpu = timeout, elapsed = timeout, transient = TRUE)
+        }
+        
+        if (is.null(params)) {
+          result <- dbGetQuery(con, query)
+        } else {
+          result <- dbGetQuery(con, glue_sql(query, .con = con, .envir = params))
+        }
+      }, error = function(e) {
+        error <- e
+        message("Query error: ", e$message, " in query: ", substr(query, 1, 100), "...")
+      }, finally = {
+        # Reset timeout
+        if (exists("setTimeLimit")) {
+          setTimeLimit(cpu = Inf, elapsed = Inf, transient = TRUE)
+        }
+        
+        if (!is.null(error)) {
+          stop("Database query failed: ", error$message)
+        }
+      })
+      
+      return(result)
     },
     cache = cache
   )
@@ -300,15 +348,24 @@ launch_sdoh_api <- function(
       # Calculate uptime
       uptime <- difftime(Sys.time(), api_context$start_time, units = "secs")
       
+      # Test database connection with a simple query
+      db_connection_healthy <- tryCatch({
+        test_result <- api_context$query_db("SELECT 1 AS test", timeout = 5)
+        !is.null(test_result) && nrow(test_result) > 0 && test_result$test[1] == 1
+      }, error = function(e) {
+        message("Database health check failed: ", e$message)
+        FALSE
+      })
+      
       # Get database info
       db_info <- api_context$db_info
       
       # Create response
       health_data <- list(
-        status = "healthy",
+        status = if(db_connection_healthy) "healthy" else "degraded",
         uptime = as.numeric(uptime),
         database = list(
-          connected = !is.null(api_context$con),
+          connected = db_connection_healthy,
           path = db_path,
           tables = length(db_info$tables),
           variables = db_info$variables_count,
@@ -323,6 +380,10 @@ launch_sdoh_api <- function(
           enabled = TRUE,
           size_mb = cache_size,
           timeout_sec = cache_timeout
+        ),
+        system = list(
+          r_version = R.version.string,
+          memory_usage_mb = round(gc()[2,2] / 1024, 2)
         ),
         version = "1.0.0"
       )
@@ -344,15 +405,44 @@ launch_sdoh_api <- function(
       query <- "SELECT * FROM variables"
       
       # Filter by domain if provided
+      params <- NULL
       if (!is.null(domain) && domain != "") {
-        query <- paste0(query, " WHERE domain = '", domain, "'")
+        # Check if domain is valid against available domains
+        valid_domains <- tryCatch({
+          api_context$query_db("SELECT DISTINCT domain FROM variables")$domain
+        }, error = function(e) {
+          character(0)
+        })
+        
+        if (length(valid_domains) > 0 && !(domain %in% valid_domains)) {
+          res$status <- 400
+          duration <- as.numeric(difftime(Sys.time(), req$start_time, units = "secs"))
+          log_request(req, "/api/v1/variables", 400, duration)
+          return(format_response(
+            status = 400,
+            message = paste("Invalid domain parameter. Valid domains are:", paste(valid_domains, collapse = ", "))
+          ))
+        }
+        
+        query <- paste0(query, " WHERE domain = {domain}")
+        params <- list(domain = domain)
       }
       
       # Add order by
       query <- paste0(query, " ORDER BY domain, variable_name")
       
-      # Execute query
-      variables <- api_context$query_db(query)
+      # Execute query with error handling
+      variables <- tryCatch({
+        api_context$query_db(query, params, timeout = config$query_timeout)
+      }, error = function(e) {
+        res$status <- 500
+        duration <- as.numeric(difftime(Sys.time(), req$start_time, units = "secs"))
+        log_request(req, "/api/v1/variables", 500, duration)
+        return(format_response(
+          status = 500,
+          message = paste("Database query error:", e$message)
+        ))
+      })
       
       # Format response
       response_data <- list(
@@ -402,20 +492,33 @@ launch_sdoh_api <- function(
       query <- "SELECT * FROM counties"
       
       # Filter by state if provided
+      params <- NULL
       if (!is.null(state) && state != "") {
         # Check if it's a FIPS code (2 digits) or state name
         if (nchar(state) == 2 && grepl("^[0-9]{2}$", state)) {
-          query <- paste0(query, " WHERE state_fips = '", state, "'")
+          query <- paste0(query, " WHERE state_fips = {state_fips}")
+          params <- list(state_fips = state)
         } else {
-          query <- paste0(query, " WHERE state_name = '", state, "'")
+          query <- paste0(query, " WHERE state_name = {state_name}")
+          params <- list(state_name = state)
         }
       }
       
       # Add order by
       query <- paste0(query, " ORDER BY state_name, name")
       
-      # Execute query
-      counties <- api_context$query_db(query)
+      # Execute query with error handling
+      counties <- tryCatch({
+        api_context$query_db(query, params, timeout = config$query_timeout)
+      }, error = function(e) {
+        res$status <- 500
+        duration <- as.numeric(difftime(Sys.time(), req$start_time, units = "secs"))
+        log_request(req, "/api/v1/counties", 500, duration)
+        return(format_response(
+          status = 500,
+          message = paste("Database query error:", e$message)
+        ))
+      })
       
       # Format response
       response_data <- list(
@@ -436,18 +539,38 @@ launch_sdoh_api <- function(
   # Years List
   api <- api %>%
     pr_get("/api/v1/years", function(req, res, variable = NULL) {
-      # Build query
+      # Build query safely using parameterization
       if (!is.null(variable) && variable != "") {
-        query <- paste0(
-          "SELECT DISTINCT year FROM sdoh_data WHERE variable_name = '", 
-          variable, "' ORDER BY year DESC"
-        )
+        query <- "SELECT DISTINCT year FROM sdoh_data WHERE variable_name = {variable} ORDER BY year DESC"
+        params <- list(variable = variable)
       } else {
         query <- "SELECT DISTINCT year FROM sdoh_data ORDER BY year DESC"
+        params <- NULL
       }
       
-      # Execute query
-      years <- api_context$query_db(query)
+      # Execute query with timeout and error handling
+      years <- tryCatch({
+        api_context$query_db(query, params, timeout = config$query_timeout)
+      }, error = function(e) {
+        res$status <- 500
+        duration <- as.numeric(difftime(Sys.time(), req$start_time, units = "secs"))
+        log_request(req, "/api/v1/years", 500, duration)
+        return(format_response(
+          status = 500,
+          message = paste("Database query error:", e$message)
+        ))
+      })
+      
+      # Check if years has year column before accessing
+      if (!is.data.frame(years) || !"year" %in% names(years)) {
+        res$status <- 500
+        duration <- as.numeric(difftime(Sys.time(), req$start_time, units = "secs"))
+        log_request(req, "/api/v1/years", 500, duration)
+        return(format_response(
+          status = 500,
+          message = "Invalid query result structure"
+        ))
+      }
       
       # Format response
       response_data <- list(
@@ -1079,7 +1202,7 @@ launch_sdoh_api <- function(
       )
       
       # Calculate summary statistics
-      if (nrow(result) > 0) {
+      if (nrow(result) > 0 && "value" %in% names(result)) {
         stats <- list(
           count = nrow(result),
           min = min(result$value, na.rm = TRUE),
@@ -1088,32 +1211,57 @@ launch_sdoh_api <- function(
           median = median(result$value, na.rm = TRUE),
           sd = sd(result$value, na.rm = TRUE),
           q1 = quantile(result$value, 0.25, na.rm = TRUE),
-          q3 = quantile(result$value, 0.75, na.rm = TRUE)
+          q3 = quantile(result$value, 0.75, na.rm = TRUE),
+          na_count = sum(is.na(result$value))
+        )
+      } else {
+        stats <- list(
+          count = 0,
+          min = NA,
+          max = NA,
+          mean = NA,
+          median = NA,
+          sd = NA,
+          q1 = NA,
+          q3 = NA,
+          na_count = NA
         )
         
-        # Calculate counts by data quality
-        quality_counts <- table(result$data_quality)
+        # Calculate counts by data quality if column exists
         quality_stats <- list()
         
-        for (quality in names(quality_counts)) {
-          quality_stats[[quality]] <- quality_counts[[quality]]
+        if ("data_quality" %in% names(result) && nrow(result) > 0) {
+          quality_counts <- table(result$data_quality)
+          
+          for (quality in names(quality_counts)) {
+            quality_stats[[quality]] <- quality_counts[[quality]]
+          }
         }
         
         # Calculate state summaries if no state filter was applied
         state_summaries <- NULL
         
-        if (is.null(state) || state == "") {
-          state_summaries <- result %>%
-            group_by(state_name) %>%
-            summarize(
-              count = n(),
-              mean = mean(value, na.rm = TRUE),
-              median = median(value, na.rm = TRUE),
-              min = min(value, na.rm = TRUE),
-              max = max(value, na.rm = TRUE)
-            ) %>%
-            arrange(state_name) %>%
-            as.data.frame()
+        if ((is.null(state) || state == "") && 
+            "state_name" %in% names(result) && 
+            "value" %in% names(result) &&
+            nrow(result) > 0) {
+          
+          tryCatch({
+            state_summaries <- result %>%
+              group_by(state_name) %>%
+              summarize(
+                count = n(),
+                mean = mean(value, na.rm = TRUE),
+                median = median(value, na.rm = TRUE),
+                min = min(value, na.rm = TRUE),
+                max = max(value, na.rm = TRUE)
+              ) %>%
+              arrange(state_name) %>%
+              as.data.frame()
+          }, error = function(e) {
+            message("Error generating state summaries: ", e$message)
+            state_summaries <- NULL
+          })
         }
         
         response_data <- list(
@@ -1157,7 +1305,8 @@ launch_sdoh_api <- function(
       year = NULL, 
       county = NULL, 
       state = NULL,
-      format = "csv"
+      format = "csv",
+      max_rows = NULL
     ) {
       # Validate inputs
       if (is.null(variable) || variable == "") {
@@ -1171,6 +1320,18 @@ launch_sdoh_api <- function(
           status = 400,
           message = "Variable parameter is required"
         ))
+      }
+      
+      # Validate max_rows parameter
+      if (is.null(max_rows)) {
+        max_rows <- config$max_download_rows
+      } else {
+        max_rows <- as.numeric(max_rows)
+        if (is.na(max_rows) || max_rows <= 0) {
+          max_rows <- config$max_download_rows
+        } else {
+          max_rows <- min(max_rows, config$max_download_rows)
+        }
       }
       
       # Build query
@@ -1233,12 +1394,13 @@ launch_sdoh_api <- function(
         }
       }
       
-      # Add order by
-      query <- paste0(query, " ORDER BY d.year DESC, c.state_name, c.name")
+      # Add order by and row limit
+      query <- paste0(query, " ORDER BY d.year DESC, c.state_name, c.name LIMIT {max_rows}")
+      params$max_rows <- max_rows
       
-      # Execute query
+      # Execute query with timeout protection
       result <- tryCatch({
-        api_context$query_db(query, params)
+        api_context$query_db(query, params, timeout = config$query_timeout * 2)  # Double timeout for downloads
       }, error = function(e) {
         res$status <- 500
         
@@ -1296,9 +1458,49 @@ launch_sdoh_api <- function(
       return(output)
     }, comments = "Download data for a variable in CSV or JSON format")
   
-  # Add shutdown hook
+  # Add hooks for request processing and cleanup
   pr_hooks <- list(
-    preroute = NULL,
+    preroute = function(req) {
+      # Check database connection health on regular intervals
+      current_time <- Sys.time()
+      
+      # Check connection every 5 minutes
+      if (!exists("last_health_check", envir = api_context) || 
+          difftime(current_time, api_context$last_health_check, units = "mins") > 5) {
+        
+        api_context$last_health_check <- current_time
+        
+        # Test connection with a simple query
+        db_healthy <- tryCatch({
+          test_result <- dbGetQuery(api_context$con, "SELECT 1 AS test")
+          TRUE
+        }, error = function(e) {
+          message("Database connection check failed: ", e$message)
+          FALSE
+        })
+        
+        # If connection is not healthy, attempt to reconnect
+        if (!db_healthy) {
+          message("Database connection unhealthy, attempting to reconnect...")
+          
+          tryCatch({
+            # Close the existing connection if possible
+            try(dbDisconnect(api_context$con), silent = TRUE)
+            
+            # Establish a new connection
+            api_context$con <- dbConnect(duckdb::duckdb(), dbdir = config$db_path)
+            message("Database reconnection successful")
+            
+            # Clear cache to prevent stale results
+            memoise::forget(api_context$query_db)
+          }, error = function(e) {
+            message("Database reconnection failed: ", e$message)
+          })
+        }
+      }
+      
+      forward()
+    },
     postroute = NULL,
     exit = function() {
       message("API server shutting down...")

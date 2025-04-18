@@ -1281,10 +1281,66 @@ if (!is.null(processed_data) && "GEOID" %in% names(processed_data)) {
 log_message("Importing variables from crosswalk...",
             level = "INFO", show_console = TRUE)
 
-# Clean up crosswalk data
-crosswalk_clean <- crosswalk %>%
-  filter(!is.na(variable_name)) %>%
-  select(variable_name, domain, description, type, units, min_year, max_year, extended_only) %>%
+# Check available columns in crosswalk
+available_columns <- names(crosswalk)
+log_message(paste("Available columns in crosswalk:", paste(available_columns, collapse=", ")),
+            level = "INFO", show_console = TRUE)
+
+# Required columns for the variables table
+required_columns <- c("variable_name", "domain", "description", "type", "units", "min_year", "max_year", "extended_only")
+
+# Check which required columns are missing
+missing_columns <- setdiff(required_columns, available_columns)
+if(length(missing_columns) > 0) {
+  log_message(paste("Missing required columns in crosswalk:", paste(missing_columns, collapse=", ")),
+              level = "WARN", show_console = TRUE)
+}
+
+# Clean up crosswalk data - first select only the columns that exist
+crosswalk_subset <- crosswalk %>%
+  filter(!is.na(variable_name))
+
+# Create a unified structure with all required columns
+crosswalk_clean <- crosswalk_subset
+
+# Add missing columns with defaults
+if(!"domain" %in% names(crosswalk_clean)) {
+  crosswalk_clean$domain <- "Unknown"
+  log_message("Added 'domain' column with default value 'Unknown'", level = "INFO")
+}
+  
+if(!"description" %in% names(crosswalk_clean)) {
+  crosswalk_clean$description <- crosswalk_clean$variable_name
+  log_message("Added 'description' column using variable names", level = "INFO")
+}
+
+if(!"type" %in% names(crosswalk_clean)) {
+  crosswalk_clean$type <- "numeric"
+  log_message("Added 'type' column with default value 'numeric'", level = "INFO")
+}
+
+if(!"units" %in% names(crosswalk_clean)) {
+  crosswalk_clean$units <- "value"
+  log_message("Added 'units' column with default value 'value'", level = "INFO")
+}
+
+if(!"min_year" %in% names(crosswalk_clean)) {
+  crosswalk_clean$min_year <- 2000
+  log_message("Added 'min_year' column with default value 2000", level = "INFO")
+}
+
+if(!"max_year" %in% names(crosswalk_clean)) {
+  crosswalk_clean$max_year <- 2025
+  log_message("Added 'max_year' column with default value 2025", level = "INFO")
+}
+
+if(!"extended_only" %in% names(crosswalk_clean)) {
+  crosswalk_clean$extended_only <- FALSE
+  log_message("Added 'extended_only' column with default value FALSE", level = "INFO")
+}
+
+# Now standardize values for existing columns
+crosswalk_clean <- crosswalk_clean %>%
   mutate(
     domain = if_else(is.na(domain), "Unknown", domain),
     description = if_else(is.na(description), variable_name, description),
@@ -1298,21 +1354,30 @@ crosswalk_clean <- crosswalk %>%
 # Update variables table using UPSERT pattern
 var_count <- dbGetQuery(con, "SELECT COUNT(*) as count FROM variables")
 
+# Select only the columns needed for the variables table
+variables_columns <- c("variable_name", "domain", "description", "type", "units", "min_year", "max_year", "extended_only")
+crosswalk_variables <- crosswalk_clean %>%
+  select(all_of(variables_columns))
+
+log_message(paste("Prepared", nrow(crosswalk_variables), "variables with required", 
+                length(variables_columns), "columns for database import"),
+          level = "INFO", show_console = TRUE)
+
 if (var_count$count == 0) {
   # If empty, just insert all variables
-  dbAppendTable(con, "variables", crosswalk_clean)
-  log_message(paste("Added", nrow(crosswalk_clean), "variables to database"),
+  dbAppendTable(con, "variables", crosswalk_variables)
+  log_message(paste("Added", nrow(crosswalk_variables), "variables to database"),
               level = "INFO")
 } else {
   # Check which variables are already in the database
   existing_vars <- dbGetQuery(con, "SELECT variable_name FROM variables")
   
   # Filter to just new variables
-  new_vars <- crosswalk_clean %>%
+  new_vars <- crosswalk_variables %>%
     filter(!variable_name %in% existing_vars$variable_name)
   
   # Find variables to update
-  update_vars <- crosswalk_clean %>%
+  update_vars <- crosswalk_variables %>%
     filter(variable_name %in% existing_vars$variable_name)
   
   # Add new variables
@@ -1601,8 +1666,7 @@ dbExecute(con, "
   ORDER BY v.domain, d.year
 ")
 
-# Close the database connection
-dbDisconnect(con)
+# Keep the database connection open for later use with summary queries
 log_message("Database creation completed successfully",
             level = "INFO", show_console = TRUE)
 
@@ -1610,78 +1674,134 @@ log_message("Database creation completed successfully",
 log_message("\nSTEP 5: GENERATING MAPS",
             level = "INFO", show_console = TRUE)
 
-# Source map generation scripts
-source(file.path(root_dir, "generate_county_maps.r"))
-if (file.exists(file.path(root_dir, "extended_sdoh_pipeline", "generate_extended_maps.r"))) {
-  source(file.path(root_dir, "extended_sdoh_pipeline", "generate_extended_maps.r"))
-}
+# Set a timeout for map generation to prevent hanging
+map_generation_timeout <- 600  # 10 minutes timeout
 
-# Check if we can generate maps
-if (!requireNamespace("viridis", quietly = TRUE)) {
-  log_message("Package 'viridis' is not available. Skipping map generation.",
-              level = "WARN", show_console = TRUE)
-} else {
-  # Load viridis for color palettes
-  library(viridis)
+# Source map generation scripts with timeout protection
+tryCatch({
+  # Use setTimeLimit to set a timeout for this block
+  setTimeLimit(cpu = map_generation_timeout, elapsed = map_generation_timeout)
   
-  # Generate maps
-  log_message("Generating county maps for visualization...",
-              level = "INFO", show_console = TRUE)
-  
-  # Get available variables from database
-  con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
-  all_vars <- dbGetQuery(con, "SELECT variable_name FROM variables")$variable_name
-  dbDisconnect(con)
-  
-  # Sample years for maps (to avoid generating too many maps)
-  sample_years <- seq(2000, current_year, by = 5)
-  
-  # Generate maps for key variables
-  prioritized_vars <- c(
-    # Demographics
-    "total_population", "median_age", "population_under_18", "population_65_over",
-    # Economic
-    "median_household_income", "poverty_rate", "gini_index", "unemployment_rate",
-    # Health
-    "life_expectancy", "obesity_pct", "diabetes_pct", "uninsured_pct",
-    # Housing
-    "median_home_value", "severe_housing_cost_burden", "overcrowded_housing_pct",
-    # Food environment
-    "food_insecurity_rate", "low_income_low_access_pct", "grocery_stores_per_1000",
-    # Environment
-    "air_quality_days_unhealthy", "pm25_annual_mean"
-  )
-  
-  # Filter to only available variables
-  map_vars <- intersect(prioritized_vars, all_vars)
-  
-  # Generate maps
-  if (exists("generate_extended_maps")) {
-    log_message("Using enhanced map generation...",
-                level = "INFO", show_console = TRUE)
-    
-    # Use the extended map generator
-    map_result <- generate_extended_maps(
-      db_path = unified_db_path,
-      output_dir = file.path(output_dir, "maps"),
-      years = sample_years,
-      variables = map_vars,
-      verbose = verbose
-    )
-  } else {
-    log_message("Using standard map generation...",
-                level = "INFO", show_console = TRUE)
-    
-    # Use the original map generator
-    map_result <- generate_county_maps(
-      database_path = unified_db_path,
-      years = sample_years,
-      variables = map_vars,
-      output_dir = file.path(output_dir, "maps"),
-      shapefile_dir = file.path(data_dir, "shapefiles")
-    )
+  # Source map generation scripts
+  source(file.path(root_dir, "generate_county_maps.r"))
+  if (file.exists(file.path(root_dir, "extended_sdoh_pipeline", "generate_extended_maps.r"))) {
+    source(file.path(root_dir, "extended_sdoh_pipeline", "generate_extended_maps.r"))
   }
-}
+  
+  # Check if we can generate maps
+  if (!requireNamespace("viridis", quietly = TRUE)) {
+    log_message("Package 'viridis' is not available. Skipping map generation.",
+                level = "WARN", show_console = TRUE)
+  } else {
+    # Load viridis for color palettes
+    library(viridis)
+    
+    # Generate maps
+    log_message("Generating county maps for visualization...",
+                level = "INFO", show_console = TRUE)
+    
+    # Get available variables from database
+    con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
+    all_vars <- dbGetQuery(con, "SELECT variable_name FROM variables")$variable_name
+    dbDisconnect(con)
+    
+    # Sample years for maps (to avoid generating too many maps)
+    # Reduce the number of years to prevent hanging
+    sample_years <- seq(2010, 2020, by = 10)  # Just 2010 and 2020 to minimize processing
+    
+    # Generate maps for just a few key variables to prevent hanging
+    prioritized_vars <- c(
+      # Demographics
+      "total_population",
+      # Economic
+      "median_household_income",
+      # Health
+      "life_expectancy"
+    )
+    
+    # Filter to only available variables
+    map_vars <- intersect(prioritized_vars, all_vars)
+    
+    # Limit the number of maps to generate
+    if (length(map_vars) > 3) {
+      map_vars <- map_vars[1:3]
+    }
+    
+    log_message(paste("Generating maps for", length(map_vars), "variables and", 
+                    length(sample_years), "years (limited to prevent hanging)"),
+              level = "INFO", show_console = TRUE)
+    
+    # Generate maps with timeout protection
+    tryCatch({
+      # Use setTimeLimit to set a timeout for map generation
+      setTimeLimit(cpu = map_generation_timeout / 2, elapsed = map_generation_timeout / 2)
+      
+      # Generate maps
+      if (exists("generate_extended_maps")) {
+        log_message("Using enhanced map generation...",
+                    level = "INFO", show_console = TRUE)
+        
+        # Use the extended map generator
+        map_result <- generate_extended_maps(
+          db_path = unified_db_path,
+          output_dir = file.path(output_dir, "maps"),
+          years = sample_years,
+          variables = map_vars,
+          verbose = verbose
+        )
+      } else {
+        log_message("Using standard map generation...",
+                    level = "INFO", show_console = TRUE)
+        
+        # Use the original map generator
+        map_result <- generate_county_maps(
+          database_path = unified_db_path,
+          years = sample_years,
+          variables = map_vars,
+          output_dir = file.path(output_dir, "maps"),
+          shapefile_dir = file.path(data_dir, "shapefiles")
+        )
+      }
+      
+      # Reset time limit
+      setTimeLimit(cpu = Inf, elapsed = Inf)
+      
+      log_message("Map generation completed successfully", 
+                  level = "INFO", show_console = TRUE)
+    }, error = function(e) {
+      # Reset time limit
+      setTimeLimit(cpu = Inf, elapsed = Inf)
+      
+      log_message(paste("Error during map generation:", conditionMessage(e)), 
+                  level = "ERROR", show_console = TRUE)
+      log_message("Continuing with pipeline despite map generation error", 
+                  level = "WARN", show_console = TRUE)
+    }, warning = function(w) {
+      log_message(paste("Warning during map generation:", conditionMessage(w)), 
+                  level = "WARN", show_console = TRUE)
+    }, finally = {
+      # Always reset time limit
+      setTimeLimit(cpu = Inf, elapsed = Inf)
+    })
+  }
+  
+  # Reset time limit
+  setTimeLimit(cpu = Inf, elapsed = Inf)
+}, error = function(e) {
+  # Reset time limit
+  setTimeLimit(cpu = Inf, elapsed = Inf)
+  
+  log_message(paste("Error in map generation setup:", conditionMessage(e)), 
+              level = "ERROR", show_console = TRUE)
+  log_message("Skipping map generation and continuing with pipeline", 
+              level = "WARN", show_console = TRUE)
+}, warning = function(w) {
+  log_message(paste("Warning during map generation setup:", conditionMessage(w)), 
+              level = "WARN", show_console = TRUE)
+}, finally = {
+  # Always reset time limit
+  setTimeLimit(cpu = Inf, elapsed = Inf)
+})
 
 # ---- Step 6: Create Documentation ----
 log_message("\nSTEP 6: GENERATING DOCUMENTATION",
@@ -1914,7 +2034,7 @@ if (nrow(summary_table) > 0) {
               level = "WARN", show_console = TRUE)
 }
 
-# Also generate a summary by domain
+# Also generate a summary by domain before closing the connection
 domain_query <- "
   SELECT 
     v.domain,
@@ -1928,8 +2048,12 @@ domain_query <- "
   ORDER BY unique_variables DESC
 "
 
-# Run the domain query
+# Run the domain query while the connection is still open
 domain_table <- dbGetQuery(con, domain_query)
+
+# Now we can close the database connection
+log_message("Closing database connection", level = "INFO", show_console = TRUE)
+dbDisconnect(con)
 
 # Display the domain summary table
 log_message("\n=== Summary of Variables by Domain ===", 
