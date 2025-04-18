@@ -6,16 +6,30 @@
 
 # Large data files
 data/cdc_places/*.csv
+data/census_historical/*.txt
+data/crime/*.csv
+data/economic/*.csv
+data/education/*.csv
 data/epa/tri/*.csv
 data/epa/*.csv
 data/epa/*.zip
+data/healthcare/*.csv
+data/housing/*.csv
 data/ihme/CSV/*.CSV
 data/ihme/Docs/*.PDF
 data/ihme/Docs/*.XLSX
 data/nhgis/*.CSV
 data/seer/*.gz
+data/shapefiles/*.rds
+data/shapefiles/*.txt
+data/social_cohesion/*.csv
+data/transportation/*.csv
 data/usda_food_atlas/*.csv
 data/usda_food_atlas/*.xls
+data/built_environment/*.csv
+
+# Preserve smaller index and metadata files
+!data/shapefiles/shapefile_index.csv
 
 # Database files
 *.duckdb
