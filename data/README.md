@@ -84,5 +84,4 @@ This dataset does not contain personally identifiable information (PII). All dat
 
 ## Error Reporting
 
-If you encounter issues with any data files, please report them by creating an issue in the GitHub repository.
-EOL < /dev/null
+If you encounter issues with any data files, please contact David Lary (davidlary@me.com) or create an issue in the GitHub repository.

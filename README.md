@@ -415,4 +415,4 @@ Unified Social Determinants of Health County-Level Dataset (2025). Generated usi
 
 ## Contact
 
-For questions or issues with this dataset, please contact the data team.
+For questions or issues with this dataset, please contact David Lary (davidlary@me.com).
