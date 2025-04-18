@@ -24,12 +24,12 @@ if (length(missing_files) > 0) {
   cat("All required files are present.\n")
 }
 
-# Check for extended pipeline files
-extended_files <- list.files("extended_sdoh_pipeline", pattern = "\\.r$", full.names = FALSE)
-if (length(extended_files) == 0) {
-  cat("Warning: No extended pipeline files found.\n")
+# Check for fetch files
+fetch_files <- list.files(".", pattern = "^fetch_.*\\.r$", full.names = FALSE)
+if (length(fetch_files) == 0) {
+  cat("Warning: No fetch files found.\n")
 } else {
-  cat("Found", length(extended_files), "extended pipeline files.\n")
+  cat("Found", length(fetch_files), "fetch files.\n")
 }
 
 # Try to load key packages
