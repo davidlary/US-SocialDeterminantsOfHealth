@@ -1,0 +1,100 @@
+variable_name,domain,description,type,source,min_year,max_year,units,related_to_standard,standard_domain,extended_only,notes,api_source,api_variable,data_quality_flag_required
+grocery_stores_per_1000,Food Environment & Access,"Number of supermarkets and grocery stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+supercenters_per_1000,Food Environment & Access,"Number of supercenter and club stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+convenience_stores_per_1000,Food Environment & Access,"Number of convenience stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+snap_authorized_stores_per_1000,Food Environment & Access,"SNAP-authorized retailers per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+wic_authorized_stores_per_1000,Food Environment & Access,"WIC-authorized stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+farmers_markets_per_1000,Food Environment & Access,"Farmers markets per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+fast_food_restaurants_per_1000,Food Environment & Access,"Fast food restaurants per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+full_service_restaurants_per_1000,Food Environment & Access,"Full-service restaurants per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+low_income_low_access_pct,Food Environment & Access,Percentage of population that is low income and has low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+children_low_access_pct,Food Environment & Access,Percentage of children with low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+seniors_low_access_pct,Food Environment & Access,Percentage of seniors with low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+snap_benefits_redemption_per_capita,Food Environment & Access,SNAP benefits redemption per capita,numeric_money,USDA Food Environment Atlas,2010,2022,dollars,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+food_insecurity_rate,Food Environment & Access,Percentage of overall population experiencing food insecurity,numeric_percent,Feeding America Map the Meal Gap,2009,2022,percent,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+child_food_insecurity_rate,Food Environment & Access,Percentage of children experiencing food insecurity,numeric_percent,Feeding America Map the Meal Gap,2009,2022,percent,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+food_insecurity_cost_per_person,Food Environment & Access,Average cost per person to meet food needs,numeric_money,Feeding America Map the Meal Gap,2009,2022,dollars,food_insecurity_pct,,TRUE,NA,NA,NA,TRUE
+walkability_index,Built Environment,County-level walkability score,numeric_index,EPA Smart Location Database,2010,2021,index,NA,,TRUE,NA,NA,NA,TRUE
+land_use_diversity,Built Environment,Mix of land uses (entropy index),numeric_index,EPA Smart Location Database,2010,2021,index,NA,,TRUE,NA,NA,NA,TRUE
+street_intersection_density,Built Environment,Number of intersections per square mile,numeric_density,EPA Smart Location Database,2010,2021,count/sq mile,NA,,TRUE,NA,NA,NA,TRUE
+employment_access_index,Built Environment,Access to employment centers,numeric_index,EPA Smart Location Database,2010,2021,index,NA,,TRUE,NA,NA,NA,TRUE
+transit_service_density,Built Environment,Transit routes and stops per square mile,numeric_density,EPA Smart Location Database,2010,2021,count/sq mile,NA,,TRUE,NA,NA,NA,TRUE
+housing_density,Built Environment,Housing units per acre of developed land,numeric_density,EPA Smart Location Database,2010,2021,units/acre,NA,,TRUE,NA,NA,NA,TRUE
+park_access_pct,Built Environment,Percentage of residents living within 10-minute walk of a park,numeric_percent,Trust for Public Land ParkScore,2012,2022,percent,NA,,TRUE,NA,NA,NA,TRUE
+park_acres_per_1000,Built Environment,"Park acres per 1,000 residents",numeric_rate,Trust for Public Land ParkScore,2012,2022,acres/1000,NA,,TRUE,NA,NA,NA,TRUE
+park_spending_per_capita,Built Environment,Park system spending per resident,numeric_money,Trust for Public Land ParkScore,2012,2022,dollars,NA,,TRUE,NA,NA,NA,TRUE
+playgrounds_per_10000,Built Environment,"Playgrounds per 10,000 residents",numeric_rate,Trust for Public Land ParkScore,2012,2022,count/10000,NA,,TRUE,NA,NA,NA,TRUE
+air_quality_days_unhealthy,Environmental Health,Number of days with unhealthy air quality,numeric_count,EPA Air Quality System,2000,2023,days,air_pollution_pm25,,TRUE,NA,NA,NA,TRUE
+pm25_annual_mean,Environmental Health,Annual mean PM2.5 concentration,numeric_index,EPA Air Quality System,2000,2023,μg/m³,air_pollution_pm25,,TRUE,NA,NA,NA,TRUE
+ozone_days_exceeding,Environmental Health,Days exceeding ozone standards,numeric_count,EPA Air Quality System,2000,2023,days,NA,,TRUE,NA,NA,NA,TRUE
+air_toxics_cancer_risk,Environmental Health,Air toxics cancer risk,numeric_rate,EPA Air Quality System,2000,2023,per million,NA,,TRUE,NA,NA,NA,TRUE
+diesel_pm_concentration,Environmental Health,Diesel particulate matter concentration,numeric_index,EPA Air Quality System,2000,2023,μg/m³,NA,,TRUE,NA,NA,NA,TRUE
+respiratory_hazard_index,Environmental Health,Respiratory hazard index from air pollutants,numeric_index,EPA Air Quality System,2000,2023,index,NA,,TRUE,NA,NA,NA,TRUE
+extreme_heat_days,Environmental Health,Annual number of extreme heat days,numeric_count,CDC Environmental Public Health Tracking,2002,2022,days,NA,,TRUE,NA,NA,NA,TRUE
+extreme_precipitation_events,Environmental Health,Annual number of extreme precipitation events,numeric_count,CDC Environmental Public Health Tracking,2002,2022,count,NA,,TRUE,NA,NA,NA,TRUE
+drought_severity_index,Environmental Health,Average drought severity index,numeric_index,CDC Environmental Public Health Tracking,2002,2022,index,NA,,TRUE,NA,NA,NA,TRUE
+public_water_violations,Environmental Health,Number of public water system violations,numeric_count,CDC Environmental Public Health Tracking,2002,2022,count,NA,,TRUE,NA,NA,NA,TRUE
+lead_exposure_risk_index,Environmental Health,Index of lead exposure risk,numeric_index,CDC Environmental Public Health Tracking,2002,2022,index,NA,,TRUE,NA,NA,NA,TRUE
+proximity_to_hazardous_waste,Environmental Health,Count of hazardous waste facilities within 5km,numeric_count,EPA EJSCREEN,2016,2023,count,NA,,TRUE,NA,NA,NA,TRUE
+proximity_to_npl_sites,Environmental Health,Proximity to National Priorities List (Superfund) sites,numeric_index,EPA EJSCREEN,2016,2023,index,NA,,TRUE,NA,NA,NA,TRUE
+wastewater_discharge,Environmental Health,Toxicity-weighted concentrations in stream reach,numeric_index,EPA EJSCREEN,2016,2023,concentration,NA,,TRUE,NA,NA,NA,TRUE
+traffic_proximity,Environmental Health,Count of vehicles at major roads within 500m,numeric_count,EPA EJSCREEN,2016,2023,count,NA,,TRUE,NA,NA,NA,TRUE
+lead_paint_indicator,Environmental Health,Percentage of housing units built pre-1960,numeric_percent,EPA EJSCREEN,2016,2023,percent,NA,,TRUE,NA,NA,NA,TRUE
+employment_volatility_index,Economic Factors,Index of employment stability/volatility,numeric_index,USDA Economic Research Service,2000,2023,index,unemployment_rate,,TRUE,NA,NA,NA,TRUE
+job_growth_rate,Economic Factors,Annual job growth rate,numeric_percent,Bureau of Labor Statistics,2000,2023,percent,unemployment_rate,,TRUE,NA,NA,NA,TRUE
+income_inequality_ratio,Economic Factors,Ratio of income at 80th percentile to income at 20th percentile,numeric_ratio,American Community Survey,2010,2023,ratio,gini_index,,TRUE,NA,NA,NA,TRUE
+economic_typology,Economic Factors,County economic typology,categorical,USDA Economic Research Service,2000,2023,category,NA,,TRUE,NA,NA,NA,TRUE
+persistent_poverty_county,Economic Factors,Flag for counties with persistent poverty,binary,USDA Economic Research Service,2000,2023,binary,poverty_rate,,TRUE,NA,NA,NA,TRUE
+persistent_child_poverty_county,Economic Factors,Flag for counties with persistent child poverty,binary,USDA Economic Research Service,2000,2023,binary,poverty_rate,,TRUE,NA,NA,NA,TRUE
+economic_distress_index,Economic Factors,Composite index of economic distress,numeric_index,Appalachian Regional Commission,2000,2023,index,NA,,TRUE,NA,NA,NA,TRUE
+income_mobility_index,Economic Factors,Measure of intergenerational economic mobility,numeric_index,Opportunity Insights,2000,2018,index,NA,,TRUE,NA,NA,NA,TRUE
+absolute_upward_mobility,Economic Factors,Expected income rank for children from low-income families,numeric_index,Opportunity Insights,2000,2018,percentile,NA,,TRUE,NA,NA,NA,TRUE
+mean_commute_distance,Economic Factors,Average commute distance,numeric_distance,Opportunity Insights,2000,2018,miles,mean_commute_time,,TRUE,NA,NA,NA,TRUE
+job_density_index,Economic Factors,Number of jobs within typical commute distance,numeric_index,Opportunity Insights,2000,2018,index,NA,,TRUE,NA,NA,NA,TRUE
+severely_cost_burdened_owners_pct,Housing,Percentage of owner households spending >50% of income on housing,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_cost_burden,,TRUE,NA,NA,NA,TRUE
+severely_cost_burdened_renters_pct,Housing,Percentage of renter households spending >50% of income on housing,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_cost_burden,,TRUE,NA,NA,NA,TRUE
+low_income_renters_affordable_units_ratio,Housing,Ratio of affordable units to low-income renters,numeric_ratio,HUD CHAS,2006,2020,ratio,NA,,TRUE,NA,NA,NA,TRUE
+housing_problems_pct,Housing,Percentage of households with at least one housing problem,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_problems,,TRUE,NA,NA,NA,TRUE
+overcrowded_housing_pct,Housing,Percentage of housing units with >1 person per room,numeric_percent,HUD CHAS,2006,2020,percent,overcrowded_housing_pct,,TRUE,NA,NA,NA,TRUE
+eviction_rate,Housing,Number of evictions per 100 renter homes,numeric_rate,Eviction Lab,2000,2018,rate,NA,,TRUE,NA,NA,NA,TRUE
+eviction_filing_rate,Housing,Number of eviction filings per 100 renter homes,numeric_rate,Eviction Lab,2000,2018,rate,NA,,TRUE,NA,NA,NA,TRUE
+rent_burden_pct,Housing,Percentage of income spent on rent (median),numeric_percent,Eviction Lab,2000,2018,percent,NA,,TRUE,NA,NA,NA,TRUE
+mortgage_denial_rate,Housing,Percentage of mortgage applications denied,numeric_percent,Federal Reserve HMDA,2007,2023,percent,NA,,TRUE,NA,NA,NA,TRUE
+high_cost_loans_pct,Housing,Percentage of loans that are high-cost,numeric_percent,Federal Reserve HMDA,2007,2023,percent,NA,,TRUE,NA,NA,NA,TRUE
+foreclosure_rate,Housing,"Foreclosures per 1,000 housing units",numeric_rate,Federal Reserve HMDA,2007,2023,rate,NA,,TRUE,NA,NA,NA,TRUE
+primary_care_physicians_per_100k,Healthcare Access,"Primary care physicians per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+mental_health_providers_per_100k,Healthcare Access,"Mental health providers per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+dentists_per_100k,Healthcare Access,"Dentists per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+hospital_beds_per_1000,Healthcare Access,"Hospital beds per 1,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/1000,NA,,TRUE,NA,NA,NA,TRUE
+fqhc_access_pct,Healthcare Access,Percentage of population with access to Federally Qualified Health Centers,numeric_percent,HRSA Area Health Resources Files,2000,2023,percent,NA,,TRUE,NA,NA,NA,TRUE
+pharmacies_per_100k,Healthcare Access,"Pharmacies per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+preventable_hospital_stays,Healthcare Access,"Preventable hospital stays per 100,000 Medicare enrollees",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+medicare_spending_per_beneficiary,Healthcare Access,Medicare spending per beneficiary,numeric_money,CMS Geographic Variation Public Use File,2007,2021,dollars,NA,,TRUE,NA,NA,NA,TRUE
+preventive_services_pct,Healthcare Access,Percentage of Medicare beneficiaries receiving preventive services,numeric_percent,CMS Geographic Variation Public Use File,2007,2021,percent,NA,,TRUE,NA,NA,NA,TRUE
+ambulatory_care_sensitive_conditions,Healthcare Access,Rate of hospitalization for ambulatory care sensitive conditions,numeric_rate,CMS Geographic Variation Public Use File,2007,2021,rate,NA,,TRUE,NA,NA,NA,TRUE
+vehicle_miles_traveled_per_capita,Transportation,Annual vehicle miles traveled per capita,numeric_distance,National Household Travel Survey,2001,2017,miles,NA,,TRUE,NA,NA,NA,TRUE
+transportation_cost_burden_pct,Transportation,Transportation costs as percentage of household income,numeric_percent,National Household Travel Survey,2001,2017,percent,NA,,TRUE,NA,NA,NA,TRUE
+zero_vehicle_households_pct,Transportation,Percentage of households with no vehicles,numeric_percent,American Community Survey,2009,2023,percent,no_vehicle_households_pct,,TRUE,NA,NA,NA,TRUE
+public_transit_trips_per_capita,Transportation,Public transit trips per capita,numeric_rate,National Transit Database,2000,2022,count,NA,,TRUE,NA,NA,NA,TRUE
+transit_connectivity_index,Transportation,Measure of transit connectivity,numeric_index,All Transit Database,2012,2022,index,NA,,TRUE,NA,NA,NA,TRUE
+transit_access_jobs,Transportation,Number of jobs accessible by transit within 30 minutes,numeric_count,All Transit Database,2012,2022,count,NA,,TRUE,NA,NA,NA,TRUE
+transit_performance_index,Transportation,Composite measure of transit performance,numeric_index,All Transit Database,2012,2022,index,NA,,TRUE,NA,NA,NA,TRUE
+voter_turnout_rate,Social Cohesion & Capital,Voter turnout rate in general elections,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent,NA,,TRUE,NA,NA,NA,TRUE
+voter_registration_rate,Social Cohesion & Capital,Voter registration as percentage of eligible population,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent,NA,,TRUE,NA,NA,NA,TRUE
+political_competition_index,Social Cohesion & Capital,Index measuring political competition,numeric_index,MIT Election Data and Science Lab,2000,2022,index,NA,,TRUE,NA,NA,NA,TRUE
+social_association_rate,Social Cohesion & Capital,"Social associations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,,TRUE,NA,NA,NA,TRUE
+religious_congregation_rate,Social Cohesion & Capital,"Religious congregations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,,TRUE,NA,NA,NA,TRUE
+nonprofit_organizations_per_10k,Social Cohesion & Capital,"Nonprofit organizations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,,TRUE,NA,NA,NA,TRUE
+violent_crime_rate,Crime & Safety,"Violent crimes per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+property_crime_rate,Crime & Safety,"Property crimes per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+homicide_rate,Crime & Safety,"Homicides per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+jail_incarceration_rate,Crime & Safety,"County jail inmates per 100,000 population",numeric_rate,Bureau of Justice Statistics,2000,2020,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+pretrial_detention_rate,Crime & Safety,"Pretrial detainees per 100,000 population",numeric_rate,Bureau of Justice Statistics,2000,2020,count/100k,NA,,TRUE,NA,NA,NA,TRUE
+student_teacher_ratio,Educational Resources & Quality,Student-to-teacher ratio in public schools,numeric_ratio,National Center for Education Statistics,2000,2022,ratio,NA,,TRUE,NA,NA,NA,TRUE
+per_pupil_expenditure,Educational Resources & Quality,Per-pupil expenditure in public schools,numeric_money,National Center for Education Statistics,2000,2022,dollars,NA,,TRUE,NA,NA,NA,TRUE
+high_school_graduation_rate,Educational Resources & Quality,Four-year high school graduation rate,numeric_percent,National Center for Education Statistics,2000,2022,percent,high_school_graduation_rate,,TRUE,NA,NA,NA,TRUE
+preschool_enrollment_rate,Educational Resources & Quality,Percentage of 3-4 year-olds enrolled in preschool,numeric_percent,National Center for Education Statistics,2000,2022,percent,NA,,TRUE,NA,NA,NA,TRUE
+school_funding_equity,Educational Resources & Quality,Ratio of funding in high-poverty vs. low-poverty districts,numeric_ratio,National Center for Education Statistics,2000,2022,ratio,NA,,TRUE,NA,NA,NA,TRUE
+reading_achievement_gap,Educational Resources & Quality,Achievement gap in reading scores by race/ethnicity,numeric_index,Stanford Education Data Archive,2009,2018,z-score,NA,,TRUE,NA,NA,NA,TRUE
+math_achievement_gap,Educational Resources & Quality,Achievement gap in math scores by race/ethnicity,numeric_index,Stanford Education Data Archive,2009,2018,z-score,NA,,TRUE,NA,NA,NA,TRUE
+educational_opportunity_index,Educational Resources & Quality,Measure of educational opportunity,numeric_index,Stanford Education Data Archive,2009,2018,index,NA,,TRUE,NA,NA,NA,TRUE
