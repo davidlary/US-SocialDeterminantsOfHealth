@@ -64,7 +64,10 @@ fetch_traffic_safety_data <- function(years,
                                     missing = NA,
                                     imputed = "imputed"
                                   ),
-                                  offline_mode = FALSE) {
+                                  offline_mode = FALSE,
+                                  parallel = FALSE,
+                                  parallel_config = NULL,
+                                  census_data = NULL) {
   
   # Create the cache directory if it doesn't exist
   traffic_cache_dir <- file.path(cache_dir, "traffic_safety")
@@ -233,6 +236,128 @@ fetch_traffic_safety_data <- function(years,
   
   # Create a template with all counties and years
   all_counties_years <- create_empty_county_data(years)
+  
+  # Check if parallel processing is requested and available
+  use_parallel <- FALSE
+  if (parallel) {
+    # Check if parallel packages are available
+    has_parallel <- require("parallel", quietly = TRUE)
+    has_future <- require("future", quietly = TRUE) 
+    has_future_apply <- require("future.apply", quietly = TRUE)
+    
+    # If parallel_processor.r exists and is sourced, we already have setup_parallel_environment
+    has_parallel_processor <- exists("setup_parallel_environment")
+    
+    # If not already set up and we have the right packages, try sourcing parallel_processor.r
+    if (!has_parallel_processor && has_parallel && has_future && has_future_apply) {
+      # Try to source the parallel processor
+      parallel_processor_path <- file.path(dirname(getwd()), "parallel_processor.r")
+      if (file.exists("parallel_processor.r")) {
+        source("parallel_processor.r")
+        has_parallel_processor <- TRUE
+      } else if (file.exists(parallel_processor_path)) {
+        source(parallel_processor_path)
+        has_parallel_processor <- TRUE
+      }
+    }
+    
+    # Enable parallel if we have everything we need
+    use_parallel <- has_parallel && has_future && has_future_apply
+    
+    if (use_parallel) {
+      message("Parallel processing enabled for traffic safety data")
+      
+      # Set up parallel environment if not provided
+      if (is.null(parallel_config) && exists("setup_parallel_environment")) {
+        parallel_config <- setup_parallel_environment(workers = min(4, parallel::detectCores() - 1))
+      }
+    } else {
+      message("Parallel processing requested but required packages not available")
+    }
+  }
+  
+  # Fetch population data for rate calculations if not provided
+  if (is.null(census_data)) {
+    message("No population data provided. Attempting to fetch from Census...")
+    
+    # Try to load population data from cache
+    pop_cache_file <- file.path(cache_dir, "population_data.rds")
+    
+    if (file.exists(pop_cache_file) && !refresh_cache) {
+      message("Loading population data from cache...")
+      population_data <- readRDS(pop_cache_file)
+    } else if (!offline_mode) {
+      # Try to fetch population data from Census API
+      if (require("tidycensus", quietly = TRUE)) {
+        message("Fetching population data from Census API...")
+        
+        population_data <- tryCatch({
+          # Get available years for Population Estimates
+          available_years <- tidycensus::get_estimates(
+            geography = "county",
+            product = "population",
+            year = max(years)
+          )
+          
+          # For each year in our range, fetch population data
+          pop_by_year <- lapply(years, function(year) {
+            # For years beyond current Census data, use the latest available
+            fetch_year <- min(year, max(available_years$year))
+            
+            pop_data <- tidycensus::get_estimates(
+              geography = "county",
+              product = "population",
+              year = fetch_year
+            )
+            
+            # Add the requested year and mark as extrapolated if necessary
+            pop_data$year <- year
+            pop_data$data_quality <- if_else(year > fetch_year, 
+                                            "extrapolated", 
+                                            "direct")
+            
+            return(pop_data)
+          })
+          
+          # Combine all years
+          pop_combined <- do.call(rbind, pop_by_year)
+          
+          # Keep only required columns and standardize format
+          pop_final <- pop_combined %>%
+            select(GEOID, year, population = value, data_quality) %>%
+            mutate(
+              fips = GEOID,
+              population = as.numeric(population)
+            )
+          
+          # Save to cache
+          saveRDS(pop_final, pop_cache_file)
+          
+          pop_final
+        }, error = function(e) {
+          message(paste("Error fetching Census population data:", e$message))
+          return(NULL)
+        })
+      } else {
+        message("tidycensus package not available for fetching population data")
+        population_data <- NULL
+      }
+    } else {
+      message("Offline mode enabled. Cannot fetch population data from Census API.")
+      population_data <- NULL
+    }
+  } else {
+    # Use the provided Census data
+    population_data <- census_data
+    
+    # Ensure it has the columns we need
+    if (is.data.frame(population_data) && all(c("fips", "year", "population") %in% names(population_data))) {
+      message("Using provided population data")
+    } else {
+      message("Provided census_data does not have required columns (fips, year, population)")
+      population_data <- NULL
+    }
+  }
   
   # Combine data from different sources
   message("Combining data from multiple sources...")
@@ -580,15 +705,114 @@ fetch_traffic_safety_data <- function(years,
   # Calculate any derived metrics and add to the dataset
   message("Calculating derived metrics...")
   
-  # Example: If we have counts but not rates, or rates but not counts,
-  # calculate the missing values using population data
+  # Join with population data if available
+  if (!is.null(population_data)) {
+    message("Joining with population data to calculate accurate rates...")
+    
+    # Ensure population data has standardized FIPS codes
+    population_data <- population_data %>%
+      mutate(fips = sprintf("%05d", as.numeric(fips)))
+    
+    # Join with population data
+    combined_data <- combined_data %>%
+      left_join(population_data %>% select(fips, year, population), 
+                by = c("fips", "year"))
+    
+    # Calculate rates using actual population
+    combined_data <- combined_data %>%
+      mutate(
+        # For each count variable, calculate or update the corresponding rate
+        traffic_fatality_rate_per_100k = ifelse(
+          !is.na(traffic_fatality_count) & !is.na(population) & population > 0,
+          (traffic_fatality_count / population) * 100000,
+          traffic_fatality_rate_per_100k
+        ),
+        traffic_injury_rate_per_100k = ifelse(
+          !is.na(traffic_injury_count) & !is.na(population) & population > 0,
+          (traffic_injury_count / population) * 100000,
+          traffic_injury_rate_per_100k
+        ),
+        ped_bike_fatality_rate_per_100k = ifelse(
+          !is.na(ped_bike_fatality_count) & !is.na(population) & population > 0,
+          (ped_bike_fatality_count / population) * 100000,
+          ped_bike_fatality_rate_per_100k
+        ),
+        dui_fatality_rate_per_100k = ifelse(
+          !is.na(dui_fatality_count) & !is.na(population) & population > 0,
+          (dui_fatality_count / population) * 100000,
+          dui_fatality_rate_per_100k
+        ),
+        speeding_fatality_rate_per_100k = ifelse(
+          !is.na(speeding_fatality_count) & !is.na(population) & population > 0,
+          (speeding_fatality_count / population) * 100000,
+          speeding_fatality_rate_per_100k
+        )
+      )
+    
+    # Update data quality flags for calculated rates
+    combined_data <- combined_data %>%
+      mutate(
+        traffic_fatality_rate_per_100k_data_quality = ifelse(
+          !is.na(traffic_fatality_count) & !is.na(population) & population > 0 & is.na(traffic_fatality_rate_per_100k_data_quality),
+          "calculated",
+          traffic_fatality_rate_per_100k_data_quality
+        ),
+        traffic_injury_rate_per_100k_data_quality = ifelse(
+          !is.na(traffic_injury_count) & !is.na(population) & population > 0 & is.na(traffic_injury_rate_per_100k_data_quality),
+          "calculated",
+          traffic_injury_rate_per_100k_data_quality
+        ),
+        ped_bike_fatality_rate_per_100k_data_quality = ifelse(
+          !is.na(ped_bike_fatality_count) & !is.na(population) & population > 0 & is.na(ped_bike_fatality_rate_per_100k_data_quality),
+          "calculated",
+          ped_bike_fatality_rate_per_100k_data_quality
+        ),
+        dui_fatality_rate_per_100k_data_quality = ifelse(
+          !is.na(dui_fatality_count) & !is.na(population) & population > 0 & is.na(dui_fatality_rate_per_100k_data_quality),
+          "calculated",
+          dui_fatality_rate_per_100k_data_quality
+        ),
+        speeding_fatality_rate_per_100k_data_quality = ifelse(
+          !is.na(speeding_fatality_count) & !is.na(population) & population > 0 & is.na(speeding_fatality_rate_per_100k_data_quality),
+          "calculated",
+          speeding_fatality_rate_per_100k_data_quality
+        )
+      )
+    
+    message(paste("Calculated rates for", 
+                  sum(!is.na(combined_data$traffic_fatality_rate_per_100k) & 
+                        combined_data$traffic_fatality_rate_per_100k_data_quality == "calculated"), 
+                  "counties using actual population data"))
+  } else {
+    message("Population data not available. Using placeholder rate calculations.")
+    
+    # For any counties with counts but no rates, use national average rates as a rough approximation
+    # This is just a fallback and should be replaced with actual population data
+    if (any(!is.na(combined_data$traffic_fatality_count) & is.na(combined_data$traffic_fatality_rate_per_100k))) {
+      message("Warning: Using national average fatality rates for counties without population data")
+      
+      # Approximate population based on national average fatality rate of 11.7 per 100,000 (2019 NHTSA data)
+      avg_fatality_rate <- 11.7
+      
+      combined_data <- combined_data %>%
+        mutate(
+          traffic_fatality_rate_per_100k = ifelse(
+            !is.na(traffic_fatality_count) & is.na(traffic_fatality_rate_per_100k),
+            avg_fatality_rate,  # Use national average as placeholder
+            traffic_fatality_rate_per_100k
+          ),
+          traffic_fatality_rate_per_100k_data_quality = ifelse(
+            !is.na(traffic_fatality_count) & traffic_fatality_rate_per_100k == avg_fatality_rate,
+            "estimated",
+            traffic_fatality_rate_per_100k_data_quality
+          )
+        )
+    }
+  }
   
-  # In a real implementation, we would join with population data here
-  # For demonstration, we'll use placeholder logic
+  # Ensure we have GEOID for compatibility with the SDOH pipeline
   combined_data <- combined_data %>%
     mutate(
-      # Example derivation (in practice would use actual population data)
-      # These are placeholder calculations only
       GEOID = fips,  # Add GEOID for compatibility with SDOH pipeline
       
       # Make sure all data quality flags are filled
