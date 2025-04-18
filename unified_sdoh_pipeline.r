@@ -1971,27 +1971,52 @@ log_message(paste("Log file saved to:", log_file),
 log_message("Generating summary table of variables by year...", 
             level = "INFO", show_console = TRUE)
 
-# Query to get variable count by year and county count
-summary_query <- "
-  SELECT 
-    year,
-    COUNT(DISTINCT variable_name) AS unique_variables,
-    COUNT(DISTINCT geoid) AS county_count,
-    COUNT(*) AS total_data_points
-  FROM sdoh_data
-  GROUP BY year
-  ORDER BY year
-"
+# Make sure the database connection is still valid
+if (!dbIsValid(con)) {
+  log_message("Database connection is no longer valid. Reconnecting...", 
+              level = "INFO", show_console = TRUE)
+  # Try to reconnect to the database
+  con <- tryCatch({
+    dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
+  }, error = function(e) {
+    log_message(paste("Failed to reconnect to database:", conditionMessage(e)), 
+                level = "ERROR", show_console = TRUE)
+    return(NULL)
+  })
+}
 
-# Run the query
-summary_table <- dbGetQuery(con, summary_query)
+# Check if we have a valid connection before proceeding
+if (is.null(con) || !dbIsValid(con)) {
+  log_message("Unable to generate summary table due to invalid database connection.", 
+              level = "ERROR", show_console = TRUE)
+} else {
+  # Query to get variable count by year and county count
+  summary_query <- "
+    SELECT 
+      year,
+      COUNT(DISTINCT variable_name) AS unique_variables,
+      COUNT(DISTINCT geoid) AS county_count,
+      COUNT(*) AS total_data_points
+    FROM sdoh_data
+    GROUP BY year
+    ORDER BY year
+  "
 
-# Display the summary table
-log_message("\n=== Summary of Variables and Counties by Year ===", 
-            level = "INFO", show_console = TRUE)
+  # Run the query with error handling
+  summary_table <- tryCatch({
+    dbGetQuery(con, summary_query)
+  }, error = function(e) {
+    log_message(paste("Error querying database for summary:", conditionMessage(e)), 
+                level = "ERROR", show_console = TRUE)
+    return(NULL)
+  })
 
-# Format and display the table in a nice format
-if (nrow(summary_table) > 0) {
+  # Display the summary table
+  log_message("\n=== Summary of Variables and Counties by Year ===", 
+              level = "INFO", show_console = TRUE)
+
+  # Format and display the table in a nice format
+  if (!is.null(summary_table) && nrow(summary_table) > 0) {
   # Create a formatted output
   summary_output <- capture.output({
     # Print header
@@ -2013,11 +2038,34 @@ if (nrow(summary_table) > 0) {
     log_message(line, level = "INFO", show_console = TRUE)
   }
   
-  # Add summary statistics
-  total_variables <- length(unique(dbGetQuery(con, "SELECT DISTINCT variable_name FROM sdoh_data")$variable_name))
-  total_counties <- length(unique(dbGetQuery(con, "SELECT DISTINCT geoid FROM sdoh_data")$geoid))
-  total_years <- length(unique(dbGetQuery(con, "SELECT DISTINCT year FROM sdoh_data")$year))
-  total_data_points <- dbGetQuery(con, "SELECT COUNT(*) AS count FROM sdoh_data")$count
+  # Add summary statistics with error handling
+  total_variables <- tryCatch({
+    length(unique(dbGetQuery(con, "SELECT DISTINCT variable_name FROM sdoh_data")$variable_name))
+  }, error = function(e) {
+    log_message(paste("Error getting variable count:", conditionMessage(e)), level = "ERROR")
+    return(0)
+  })
+  
+  total_counties <- tryCatch({
+    length(unique(dbGetQuery(con, "SELECT DISTINCT geoid FROM sdoh_data")$geoid))
+  }, error = function(e) {
+    log_message(paste("Error getting county count:", conditionMessage(e)), level = "ERROR")
+    return(0)
+  })
+  
+  total_years <- tryCatch({
+    length(unique(dbGetQuery(con, "SELECT DISTINCT year FROM sdoh_data")$year))
+  }, error = function(e) {
+    log_message(paste("Error getting year count:", conditionMessage(e)), level = "ERROR")
+    return(0)
+  })
+  
+  total_data_points <- tryCatch({
+    dbGetQuery(con, "SELECT COUNT(*) AS count FROM sdoh_data")$count
+  }, error = function(e) {
+    log_message(paste("Error getting total data points:", conditionMessage(e)), level = "ERROR")
+    return(0)
+  })
   
   log_message("\n=== Overall Dataset Statistics ===", 
               level = "INFO", show_console = TRUE)
@@ -2032,35 +2080,53 @@ if (nrow(summary_table) > 0) {
 } else {
   log_message("No data available to summarize.", 
               level = "WARN", show_console = TRUE)
+  }
+  
+  # Also generate a summary by domain before closing the connection
+  if (!is.null(con) && dbIsValid(con)) {
+    domain_query <- "
+      SELECT 
+        v.domain,
+        COUNT(DISTINCT d.variable_name) AS unique_variables,
+        COUNT(DISTINCT d.year) AS years_available,
+        COUNT(DISTINCT d.geoid) AS max_counties,
+        COUNT(*) AS total_data_points
+      FROM sdoh_data d
+      JOIN variables v ON d.variable_name = v.variable_name
+      GROUP BY v.domain
+      ORDER BY unique_variables DESC
+    "
+
+    # Run the domain query while the connection is still open
+    domain_table <- tryCatch({
+      dbGetQuery(con, domain_query)
+    }, error = function(e) {
+      log_message(paste("Error querying database for domain summary:", conditionMessage(e)), 
+                  level = "ERROR", show_console = TRUE)
+      return(NULL)
+    })
+
+    # Now we can close the database connection
+    log_message("Closing database connection", level = "INFO", show_console = TRUE)
+    tryCatch({
+      dbDisconnect(con)
+    }, error = function(e) {
+      log_message(paste("Error disconnecting from database:", conditionMessage(e)), 
+                  level = "WARN", show_console = TRUE)
+    })
+  } else {
+    domain_table <- NULL
+    log_message("Cannot generate domain summary due to invalid database connection.", 
+                level = "ERROR", show_console = TRUE)
+  }
 }
-
-# Also generate a summary by domain before closing the connection
-domain_query <- "
-  SELECT 
-    v.domain,
-    COUNT(DISTINCT d.variable_name) AS unique_variables,
-    COUNT(DISTINCT d.year) AS years_available,
-    COUNT(DISTINCT d.geoid) AS max_counties,
-    COUNT(*) AS total_data_points
-  FROM sdoh_data d
-  JOIN variables v ON d.variable_name = v.variable_name
-  GROUP BY v.domain
-  ORDER BY unique_variables DESC
-"
-
-# Run the domain query while the connection is still open
-domain_table <- dbGetQuery(con, domain_query)
-
-# Now we can close the database connection
-log_message("Closing database connection", level = "INFO", show_console = TRUE)
-dbDisconnect(con)
 
 # Display the domain summary table
 log_message("\n=== Summary of Variables by Domain ===", 
             level = "INFO", show_console = TRUE)
 
 # Format and display the domain table
-if (nrow(domain_table) > 0) {
+if (!is.null(domain_table) && nrow(domain_table) > 0) {
   # Create a formatted output
   domain_output <- capture.output({
     # Print header
@@ -2084,6 +2150,9 @@ if (nrow(domain_table) > 0) {
   for (line in domain_output) {
     log_message(line, level = "INFO", show_console = TRUE)
   }
+} else {
+  log_message("No domain summary data available to display.", 
+              level = "WARN", show_console = TRUE)
 }
 
 # Restore console output
