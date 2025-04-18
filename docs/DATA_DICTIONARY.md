@@ -2,6 +2,37 @@
 
 This documentation provides comprehensive details about all data sources used in the Social Determinants of Health pipeline. Each table lists the variables available in a specific domain, their source, and time range.
 
+## NHGIS and Census Data Sources
+
+For historical continuity, this dataset uses IPUMS NHGIS (National Historical Geographic Information System) as the primary data source for years 1970-present. NHGIS provides harmonized versions of:
+
+- **Decennial Census** (1970, 1980, 1990, 2000, 2010, 2020)
+- **American Community Survey (ACS)** (2005-present, 5-year estimates)
+- **Population Estimates Program** (intercensal years)
+
+The following core variables are sourced from NHGIS for historical years (1970-1999):
+
+| Variable Name | Description | Source | Years Available |
+|---------------|-------------|--------|-----------------|
+| total_population | Total population | NHGIS (Census) | 1970-2020 |
+| white_population | White population | NHGIS (Census) | 1970-2020 |
+| black_population | Black population | NHGIS (Census) | 1970-2020 |
+| hispanic_population | Hispanic/Latino population | NHGIS (Census) | 1970-2020 |
+| male_population | Male population | NHGIS (Census) | 1970-2020 |
+| female_population | Female population | NHGIS (Census) | 1970-2020 |
+| population_under_18 | Population under 18 years | NHGIS (Census) | 1970-2020 |
+| population_65_over | Population 65 years and over | NHGIS (Census) | 1970-2020 |
+| median_household_income | Median household income | NHGIS (Census/ACS) | 1970-2020 |
+| poverty_rate | Poverty rate | NHGIS (Census/ACS) | 1970-2020 |
+| unemployment_rate | Unemployment rate | NHGIS (Census/ACS) | 1970-2020 |
+| less_than_hs_education | Less than high school education | NHGIS (Census/ACS) | 1970-2020 |
+| bachelor_degree_or_higher | Bachelor's degree or higher | NHGIS (Census/ACS) | 1970-2020 |
+| median_home_value | Median home value | NHGIS (Census/ACS) | 1970-2020 |
+| homeownership_rate | Homeownership rate | NHGIS (Census/ACS) | 1970-2020 |
+| housing_cost_burden | Housing cost burden | NHGIS (Census/ACS) | 1970-2020 |
+
+Modern variables from more recent years (2000-present) are primarily sourced from the American Community Survey through both direct API access and NHGIS for consistency.
+
 ## Summary of Variables by Domain
 
 | Domain | Number of Variables | Primary Data Sources |
