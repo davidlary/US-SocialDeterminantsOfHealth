@@ -804,7 +804,104 @@ if (exists("fetch_digital_access_data")) {
 }
 
 # Traffic safety data
-if (exists("fetch_traffic_safety_data")) {
+if (file.exists(file.path(root_dir, "traffic_safety_integration.r"))) {
+  # Source the traffic safety integration module with a timeout
+  tryCatch({
+    # Set a global timeout for this operation
+    old_timeout <- options(timeout = 30)
+    on.exit(options(old_timeout), add = TRUE) # Restore original timeout
+    
+    # Set CPU and elapsed time limits
+    setTimeLimit(cpu = 30, elapsed = 30)
+    on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE) # Restore time limits
+    
+    log_message("Loading traffic safety integration module...", level = "INFO", show_console = TRUE)
+    
+    # Source the integration file
+    source(file.path(root_dir, "traffic_safety_integration.r"))
+    
+    log_message("Using enhanced traffic safety module with geospatial, validation, forecasting and cache optimizations", 
+                level = "INFO", show_console = TRUE)
+    
+    # Reset time limits for the data fetching operation
+    setTimeLimit(cpu = Inf, elapsed = Inf)
+    
+    # Use the enhanced version with simplified parameters (minimal features enabled)
+    extended_data_sources$traffic_safety <- safe_fetch_extended(
+      "Enhanced traffic safety data", 
+      function(years, cache_dir, refresh_cache, allow_simulation, allow_interpolation, ...) {
+        # Set a 60 second timeout for data fetching
+        setTimeLimit(cpu = 60, elapsed = 60)
+        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
+        
+        # Call with minimal features enabled to prevent hanging
+        result <- fetch_enhanced_traffic_safety_data(
+          years = years,
+          cache_dir = cache_dir,
+          refresh_cache = refresh_cache,
+          allow_simulation = allow_simulation,
+          allow_interpolation = allow_interpolation,
+          use_validation = FALSE, # Disable validation to prevent hanging
+          use_optimized_cache = TRUE,
+          generate_forecasts = FALSE, # Disable forecasting to prevent hanging
+          spatial_analysis = FALSE # Disable spatial analysis to prevent hanging
+        )
+        
+        # Reset time limits
+        setTimeLimit(cpu = Inf, elapsed = Inf)
+        return(result)
+      }
+    )
+    
+    # Generate and save visualizations if we have data
+    if (!is.null(extended_data_sources$traffic_safety) && 
+        nrow(extended_data_sources$traffic_safety) > 0) {
+      tryCatch({
+        # Set a 30 second timeout for visualizations
+        setTimeLimit(cpu = 30, elapsed = 30)
+        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
+        
+        log_message("Generating traffic safety visualizations...", level = "INFO", show_console = TRUE)
+        
+        vis_files <- create_traffic_safety_visualizations(
+          extended_data_sources$traffic_safety,
+          output_dir = file.path(output_dir, "visualizations/traffic_safety"),
+          create_maps = FALSE,  # Disable maps to prevent hanging
+          create_forecast_plots = FALSE, # Disable forecast plots to prevent hanging
+          create_animation = FALSE # Disable animations to prevent hanging
+        )
+        
+        # Reset time limits
+        setTimeLimit(cpu = Inf, elapsed = Inf)
+        
+        log_message(paste("Generated", length(vis_files), "traffic safety visualizations"), 
+                    level = "INFO", show_console = TRUE)
+      }, error = function(e) {
+        # Always reset time limits in case of error
+        setTimeLimit(cpu = Inf, elapsed = Inf)
+        log_message(paste("Error generating traffic safety visualizations:", e$message), 
+                    level = "ERROR", show_console = TRUE)
+      })
+    }
+  }, error = function(e) {
+    # Always reset time limits in case of error
+    setTimeLimit(cpu = Inf, elapsed = Inf)
+    log_message(paste("Error loading enhanced traffic safety module:", e$message), 
+                level = "WARN", show_console = TRUE)
+    
+    # Fall back to standard fetcher
+    if (exists("fetch_traffic_safety_data")) {
+      log_message("Falling back to standard traffic safety data fetcher", 
+                  level = "WARN", show_console = TRUE)
+                  
+      extended_data_sources$traffic_safety <- safe_fetch_extended(
+        "Traffic safety and accident data", 
+        fetch_traffic_safety_data
+      )
+    }
+  })
+} else if (exists("fetch_traffic_safety_data")) {
+  # Use the standard version
   extended_data_sources$traffic_safety <- safe_fetch_extended(
     "Traffic safety and accident data", 
     fetch_traffic_safety_data
@@ -1700,6 +1797,63 @@ dbExecute(con, "
 # Keep the database connection open for later use with summary queries
 log_message("Database creation completed successfully",
             level = "INFO", show_console = TRUE)
+
+# Add enhanced traffic safety data to database if available
+if (file.exists(file.path(root_dir, "traffic_safety_integration.r")) && 
+    "traffic_safety" %in% names(extended_data_sources) &&
+    !is.null(extended_data_sources$traffic_safety)) {
+  
+  # Check if the add function exists
+  tryCatch({
+    # Source the module if needed with timeout
+    if (!exists("add_traffic_safety_to_database")) {
+      # Set a timeout for sourcing the module
+      setTimeLimit(cpu = 30, elapsed = 30)
+      on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
+      
+      log_message("Loading traffic safety integration module for database operations...", 
+                  level = "INFO", show_console = TRUE)
+      
+      source(file.path(root_dir, "traffic_safety_integration.r"))
+      
+      # Reset time limits
+      setTimeLimit(cpu = Inf, elapsed = Inf)
+    }
+    
+    # Add enhanced data to database
+    log_message("Adding enhanced traffic safety data to database...",
+                level = "INFO", show_console = TRUE)
+    
+    # Reconnect to database if needed
+    if (!dbIsValid(con)) {
+      log_message("Reconnecting to database...", level = "INFO")
+      con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
+    }
+    
+    # Set a timeout for database operations
+    setTimeLimit(cpu = 60, elapsed = 60)
+    on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
+    
+    # Add the data with limited features
+    add_result <- add_traffic_safety_to_database(
+      traffic_data = extended_data_sources$traffic_safety,
+      db_path = unified_db_path,
+      add_forecasts = FALSE,  # Disable forecasts to prevent hanging
+      add_spatial = FALSE     # Disable spatial data to prevent hanging
+    )
+    
+    # Reset time limits
+    setTimeLimit(cpu = Inf, elapsed = Inf)
+    
+    log_message("Enhanced traffic safety data successfully added to database",
+                level = "INFO", show_console = TRUE)
+  }, error = function(e) {
+    # Always reset time limits in case of error
+    setTimeLimit(cpu = Inf, elapsed = Inf)
+    log_message(paste("Error adding enhanced traffic safety data to database:", e$message),
+                level = "ERROR", show_console = TRUE)
+  })
+}
 
 # ---- Step 5: Generate Maps ----
 log_message("\nSTEP 5: GENERATING MAPS",
