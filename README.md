@@ -22,7 +22,30 @@ This dataset combines county-level data on social determinants of health from mu
 
 ## Data Structure
 
-The database contains organized tables with standardized variables across multiple domains:
+The database contains organized tables with standardized variables across multiple domains.
+
+### Summary of Variables by Domain
+
+| Domain | Number of Variables | Primary Data Sources |
+|--------|---------------------|----------------------|
+| Demographics & Population | 12 | Census Bureau, IPUMS NHGIS |
+| Economic Factors | 11 | Census ACS, BLS, Opportunity Insights |
+| Education | 8 | Census ACS, NCES, Stanford Education Data Archive |
+| Health Status | 14 | CDC PLACES, CDC WONDER |
+| Healthcare Access | 10 | HRSA Area Health Resources Files, CMS |
+| Housing | 8 | Census ACS, HUD CHAS, Eviction Lab |
+| Environmental Health | 15 | EPA Air Quality System, CDC Environmental Public Health Tracking |
+| Food Environment | 7 | USDA Food Environment Atlas, Feeding America |
+| Transportation | 7 | Census ACS, National Transit Database |
+| Traffic Safety | 11 | NHTSA FARS, CDC WONDER |
+| Social Cohesion | 7 | Census ACS, County Health Rankings, MIT Election Data |
+| Crime & Safety | 5 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
+| Built Environment | 10 | EPA Smart Location Database, Trust for Public Land |
+| Disability | 7 | Census ACS |
+| Health Behaviors | 4 | CDC PLACES |
+| **Total** | **136** | |
+
+The domains include:
 
 - **Demographics and Population**: Population counts, age distribution, race/ethnicity
 - **Economic Factors**: Income, poverty, employment, economic mobility
