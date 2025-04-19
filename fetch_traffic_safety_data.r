@@ -10,7 +10,6 @@
 # - Cleaning and standardization 
 # - Geographic mapping to county FIPS codes
 # - Interpolation for missing years (when allowed)
-# - Simulation for unavailable data (when allowed)
 
 # Required packages
 required_packages <- c(
@@ -23,7 +22,6 @@ required_packages <- c(
   "tigris",
   "lubridate",
   "glue"
-  # Removed assertthat as it's optional
 )
 
 # Load required packages
@@ -35,15 +33,14 @@ for (pkg in required_packages) {
   }
 }
 
-# Optionally load assertthat if available, but don't require it
-has_assertthat <- require("assertthat", quietly = TRUE)
+# Also check for tidycensus which is helpful for fetching population data
+has_tidycensus <- require("tidycensus", quietly = TRUE)
 
 #' Fetch traffic safety data for specified years
 #'
 #' @param years Vector of years to fetch data for
 #' @param cache_dir Directory to store cached data
 #' @param refresh_cache Whether to refresh cached data
-#' @param allow_simulation Whether to allow data simulation when real data unavailable
 #' @param allow_interpolation Whether to allow interpolation for years with missing data
 #' @param data_quality_flags List with flag values for different data quality types
 #' @param offline_mode Whether to use only local data (no API/internet calls)
@@ -54,13 +51,11 @@ has_assertthat <- require("assertthat", quietly = TRUE)
 fetch_traffic_safety_data <- function(years, 
                                   cache_dir = "data/cache", 
                                   refresh_cache = FALSE,
-                                  allow_simulation = FALSE,
                                   allow_interpolation = TRUE,
                                   data_quality_flags = list(
                                     direct = "direct",
                                     interpolated = "interpolated",
                                     extrapolated = "extrapolated",
-                                    simulated = "simulated",
                                     missing = NA,
                                     imputed = "imputed"
                                   ),
@@ -82,7 +77,6 @@ fetch_traffic_safety_data <- function(years,
   direct_flag <- data_quality_flags$direct %||% "direct"
   interpolated_flag <- data_quality_flags$interpolated %||% "interpolated"
   extrapolated_flag <- data_quality_flags$extrapolated %||% "extrapolated" 
-  simulated_flag <- data_quality_flags$simulated %||% "simulated"
   missing_flag <- data_quality_flags$missing %||% NA
   imputed_flag <- data_quality_flags$imputed %||% "imputed"
   
@@ -158,123 +152,85 @@ fetch_traffic_safety_data <- function(years,
     }
   }
   
-  # Helper function to create an empty county data frame
-  create_empty_county_data <- function(years) {
-    # Get all county FIPS codes
-    counties <- tryCatch({
-      tigris::counties(cb = TRUE, year = max(2020, min(years)))
-    }, error = function(e) {
-      # If tigris fails (offline or other error), create a basic template
-      message("Unable to fetch county data from tigris. Using basic template.")
-      data.frame(
-        GEOID = character(0),
-        NAME = character(0)
-      )
-    })
+  # Get county template data frame
+  county_template <- tryCatch({
+    # Get counties from tigris for the most recent census
+    counties <- tigris::counties(cb = TRUE, year = max(min(c(2020, current_year)), min(years)))
     
-    # If we got counties from tigris, extract FIPS codes
-    if (nrow(counties) > 0) {
-      county_template <- counties %>%
-        sf::st_drop_geometry() %>%
-        select(GEOID, NAME) %>%
-        rename(fips = GEOID, county_name = NAME)
-    } else {
-      # Otherwise, build a minimal dataset with just the structure
-      county_template <- data.frame(
-        fips = character(0),
-        county_name = character(0)
-      )
-    }
-    
-    # Create a data frame with all counties and years
-    all_counties_years <- expand.grid(
-      fips = county_template$fips,
-      year = years,
-      stringsAsFactors = FALSE
+    # Extract required fields
+    counties %>%
+      sf::st_drop_geometry() %>%
+      select(GEOID, NAME) %>%
+      rename(fips = GEOID, county_name = NAME)
+  }, error = function(e) {
+    warning(paste("Error fetching county data from tigris:", e$message))
+    # Return NULL if we couldn't get counties
+    NULL
+  })
+  
+  # If tigris failed, try to create a basic county list from FARS data
+  if (is.null(county_template) && !is.null(fars_data)) {
+    county_template <- fars_data %>%
+      select(fips) %>%
+      distinct() %>%
+      mutate(county_name = NA_character_)
+  }
+  
+  # If we still don't have counties, use a minimal template
+  if (is.null(county_template)) {
+    # Create an empty template - will be populated as we process data
+    county_template <- data.frame(
+      fips = character(0),
+      county_name = character(0)
     )
-    
-    # Add county names if available
-    if (nrow(county_template) > 0) {
-      all_counties_years <- all_counties_years %>%
-        left_join(county_template, by = "fips")
-    } else {
-      all_counties_years$county_name <- NA_character_
-    }
-    
-    # Add empty variables for traffic safety data
-    all_counties_years <- all_counties_years %>%
-      mutate(
-        traffic_fatality_count = NA_real_,
-        traffic_fatality_rate_per_100k = NA_real_,
-        traffic_injury_count = NA_real_,
-        traffic_injury_rate_per_100k = NA_real_,
-        ped_bike_fatality_count = NA_real_,
-        ped_bike_fatality_rate_per_100k = NA_real_,
-        dui_fatality_count = NA_real_,
-        dui_fatality_rate_per_100k = NA_real_,
-        speeding_fatality_count = NA_real_,
-        speeding_fatality_rate_per_100k = NA_real_
-      )
-    
-    # Add data quality flag columns
-    all_counties_years <- all_counties_years %>%
-      mutate(
-        traffic_fatality_count_data_quality = missing_flag,
-        traffic_fatality_rate_per_100k_data_quality = missing_flag,
-        traffic_injury_count_data_quality = missing_flag,
-        traffic_injury_rate_per_100k_data_quality = missing_flag,
-        ped_bike_fatality_count_data_quality = missing_flag,
-        ped_bike_fatality_rate_per_100k_data_quality = missing_flag,
-        dui_fatality_count_data_quality = missing_flag,
-        dui_fatality_rate_per_100k_data_quality = missing_flag,
-        speeding_fatality_count_data_quality = missing_flag,
-        speeding_fatality_rate_per_100k_data_quality = missing_flag
-      )
-    
-    return(all_counties_years)
   }
   
-  # Create a template with all counties and years
-  all_counties_years <- create_empty_county_data(years)
+  # Create a data frame with all counties and years
+  all_counties_years <- tidyr::expand_grid(
+    fips = unique(county_template$fips),
+    year = years
+  )
   
-  # Check if parallel processing is requested and available
-  use_parallel <- FALSE
-  if (parallel) {
-    # Check if parallel packages are available
-    has_parallel <- require("parallel", quietly = TRUE)
-    has_future <- require("future", quietly = TRUE) 
-    has_future_apply <- require("future.apply", quietly = TRUE)
-    
-    # If parallel_processor.r exists and is sourced, we already have setup_parallel_environment
-    has_parallel_processor <- exists("setup_parallel_environment")
-    
-    # If not already set up and we have the right packages, try sourcing parallel_processor.r
-    if (!has_parallel_processor && has_parallel && has_future && has_future_apply) {
-      # Try to source the parallel processor
-      parallel_processor_path <- file.path(dirname(getwd()), "parallel_processor.r")
-      if (file.exists("parallel_processor.r")) {
-        source("parallel_processor.r")
-        has_parallel_processor <- TRUE
-      } else if (file.exists(parallel_processor_path)) {
-        source(parallel_processor_path)
-        has_parallel_processor <- TRUE
-      }
-    }
-    
-    # Enable parallel if we have everything we need
-    use_parallel <- has_parallel && has_future && has_future_apply
-    
-    if (use_parallel) {
-      message("Parallel processing enabled for traffic safety data")
-      
-      # Set up parallel environment if not provided
-      if (is.null(parallel_config) && exists("setup_parallel_environment")) {
-        parallel_config <- setup_parallel_environment(workers = min(4, parallel::detectCores() - 1))
-      }
-    } else {
-      message("Parallel processing requested but required packages not available")
-    }
+  # Add county names if available
+  if (nrow(county_template) > 0) {
+    all_counties_years <- all_counties_years %>%
+      left_join(county_template, by = "fips")
+  } else {
+    all_counties_years$county_name <- NA_character_
   }
+  
+  # Add empty variables for traffic safety data
+  all_counties_years <- all_counties_years %>%
+    mutate(
+      traffic_fatality_count = NA_real_,
+      traffic_fatality_rate_per_100k = NA_real_,
+      traffic_injury_count = NA_real_,
+      traffic_injury_rate_per_100k = NA_real_,
+      ped_bike_fatality_count = NA_real_,
+      ped_bike_fatality_rate_per_100k = NA_real_,
+      dui_fatality_count = NA_real_,
+      dui_fatality_rate_per_100k = NA_real_,
+      speeding_fatality_count = NA_real_,
+      speeding_fatality_rate_per_100k = NA_real_
+    )
+  
+  # Add data quality flag columns
+  all_counties_years <- all_counties_years %>%
+    mutate(
+      traffic_fatality_count_data_quality = missing_flag,
+      traffic_fatality_rate_per_100k_data_quality = missing_flag,
+      traffic_injury_count_data_quality = missing_flag,
+      traffic_injury_rate_per_100k_data_quality = missing_flag,
+      ped_bike_fatality_count_data_quality = missing_flag,
+      ped_bike_fatality_rate_per_100k_data_quality = missing_flag,
+      dui_fatality_count_data_quality = missing_flag,
+      dui_fatality_rate_per_100k_data_quality = missing_flag,
+      speeding_fatality_count_data_quality = missing_flag,
+      speeding_fatality_rate_per_100k_data_quality = missing_flag
+    )
+  
+  # Start with the template
+  combined_data <- all_counties_years
   
   # Fetch population data for rate calculations if not provided
   if (is.null(census_data)) {
@@ -286,64 +242,137 @@ fetch_traffic_safety_data <- function(years,
     if (file.exists(pop_cache_file) && !refresh_cache) {
       message("Loading population data from cache...")
       population_data <- readRDS(pop_cache_file)
-    } else if (!offline_mode) {
-      # Try to fetch population data from Census API
-      if (require("tidycensus", quietly = TRUE)) {
-        message("Fetching population data from Census API...")
+    } else if (!offline_mode && has_tidycensus) {
+      # Fetch population data from Census API
+      message("Fetching population data from Census API...")
+      
+      population_data <- tryCatch({
+        # Check if we need a Census API key
+        if (Sys.getenv("CENSUS_API_KEY") == "") {
+          census_api_key <- read.table("census_api_key.txt", stringsAsFactors = FALSE)$V1
+          Sys.setenv(CENSUS_API_KEY = census_api_key)
+        }
         
-        population_data <- tryCatch({
-          # Get available years for Population Estimates
-          available_years <- tidycensus::get_estimates(
-            geography = "county",
-            product = "population",
-            year = max(years)
-          )
+        # Get population data for each year
+        all_pop_data <- lapply(years, function(year) {
+          yr_data <- NULL
           
-          # For each year in our range, fetch population data
-          pop_by_year <- lapply(years, function(year) {
-            # For years beyond current Census data, use the latest available
-            fetch_year <- min(year, max(available_years$year))
-            
-            pop_data <- tidycensus::get_estimates(
+          if (year >= 2010) {
+            # For 2010 and later, use decennial census for 2010 and ACS for other years
+            if (year == 2010) {
+              yr_data <- tidycensus::get_decennial(
+                geography = "county",
+                variables = "P001001",  # Total population
+                year = 2010,
+                cache = TRUE
+              )
+            } else {
+              # Use ACS 5-year estimates for non-decennial years
+              acs_year <- min(year, current_year - 1)  # ACS data is typically a year behind
+              yr_data <- tidycensus::get_acs(
+                geography = "county",
+                variables = "B01003_001",  # Total population
+                year = acs_year,
+                cache = TRUE
+              )
+            }
+          } else if (year >= 2000) {
+            # For 2000-2009, use 2000 decennial census and interpolate
+            if (year == 2000) {
+              yr_data <- tidycensus::get_decennial(
+                geography = "county",
+                variables = "P001001",  # Total population
+                year = 2000,
+                cache = TRUE
+              )
+            } else {
+              # Interpolate between 2000 and 2010 censuses
+              yr_2000 <- tidycensus::get_decennial(
+                geography = "county",
+                variables = "P001001",
+                year = 2000,
+                cache = TRUE
+              ) %>% 
+                rename(pop_2000 = value)
+              
+              yr_2010 <- tidycensus::get_decennial(
+                geography = "county",
+                variables = "P001001",
+                year = 2010,
+                cache = TRUE
+              ) %>% 
+                rename(pop_2010 = value)
+              
+              # Join 2000 and 2010 data
+              yr_data <- yr_2000 %>%
+                left_join(yr_2010, by = "GEOID", suffix = c("_2000", "_2010"))
+              
+              # Linear interpolation between 2000 and 2010
+              factor <- (year - 2000) / 10
+              yr_data$value <- yr_data$pop_2000 + (yr_data$pop_2010 - yr_data$pop_2000) * factor
+              yr_data$variable <- "B01003_001"
+              yr_data$NAME <- yr_data$NAME_2000
+              yr_data <- yr_data %>% select(GEOID, NAME, variable, value)
+            }
+          } else if (year >= 1990) {
+            # For 1990-1999, use NHGIS data or extrapolate from 2000
+            # Placeholder for demo - would use actual NHGIS data in production
+            yr_2000 <- tidycensus::get_decennial(
               geography = "county",
-              product = "population",
-              year = fetch_year
+              variables = "P001001",
+              year = 2000,
+              cache = TRUE
             )
             
-            # Add the requested year and mark as extrapolated if necessary
-            pop_data$year <- year
-            pop_data$data_quality <- if_else(year > fetch_year, 
-                                            "extrapolated", 
-                                            "direct")
-            
-            return(pop_data)
-          })
-          
-          # Combine all years
-          pop_combined <- do.call(rbind, pop_by_year)
-          
-          # Keep only required columns and standardize format
-          pop_final <- pop_combined %>%
-            select(GEOID, year, population = value, data_quality) %>%
-            mutate(
-              fips = GEOID,
-              population = as.numeric(population)
+            # Approximate extrapolation - in reality would use NHGIS data
+            yr_data <- yr_2000
+            factor <- 1 - (2000 - year) * 0.01  # Simple decay factor
+            yr_data$value <- yr_data$value * factor
+          } else if (year >= 1970) {
+            # For 1970-1989, would use NHGIS data
+            # Placeholder - would use actual NHGIS data in production
+            yr_1990 <- tidycensus::get_decennial(
+              geography = "county",
+              variables = "P001001",
+              year = 1990,
+              cache = TRUE
             )
+            
+            # Approximate extrapolation - in reality would use NHGIS data
+            yr_data <- yr_1990
+            factor <- 1 - (1990 - year) * 0.01  # Simple decay factor
+            yr_data$value <- yr_data$value * factor
+          }
           
-          # Save to cache
-          saveRDS(pop_final, pop_cache_file)
+          if (!is.null(yr_data)) {
+            yr_data$year <- year
+            yr_data$data_quality <- ifelse(year %in% c(1970, 1980, 1990, 2000, 2010, 2020), 
+                                          "direct", 
+                                          "interpolated")
+          }
           
-          pop_final
-        }, error = function(e) {
-          message(paste("Error fetching Census population data:", e$message))
-          return(NULL)
+          return(yr_data)
         })
-      } else {
-        message("tidycensus package not available for fetching population data")
-        population_data <- NULL
-      }
+        
+        # Combine all years
+        pop_data <- bind_rows(all_pop_data) %>%
+          # Format for the pipeline
+          select(GEOID, year, population = value, data_quality) %>%
+          mutate(
+            fips = GEOID,
+            population = as.numeric(population)
+          )
+        
+        # Save to cache
+        saveRDS(pop_data, pop_cache_file)
+        
+        pop_data
+      }, error = function(e) {
+        warning(paste("Error fetching Census population data:", e$message))
+        return(NULL)
+      })
     } else {
-      message("Offline mode enabled. Cannot fetch population data from Census API.")
+      message("Cannot fetch population data - offline mode or missing tidycensus package")
       population_data <- NULL
     }
   } else {
@@ -358,12 +387,6 @@ fetch_traffic_safety_data <- function(years,
       population_data <- NULL
     }
   }
-  
-  # Combine data from different sources
-  message("Combining data from multiple sources...")
-  
-  # Start with the template
-  combined_data <- all_counties_years
   
   # Add FARS data if available
   if (!is.null(fars_data) && nrow(fars_data) > 0) {
@@ -384,43 +407,41 @@ fetch_traffic_safety_data <- function(years,
                      ~., 
                      .names = "{.col}_data_quality")) %>%
         mutate(across(ends_with("_data_quality"), 
-                     ~as.character(if_else(is.na(.x), direct_flag, .x))))
+                     ~ifelse(is.na(.x), direct_flag, .x)))
       
       # Merge with combined_data
       combined_data <- combined_data %>%
-        left_join(fars_for_merge, by = c("fips", "year"), suffix = c("", "_fars")) 
+        left_join(fars_for_merge, by = c("fips", "year"), suffix = c("", "_fars"))
       
       # For each variable from FARS, update the corresponding variable in combined_data
       # giving preference to FARS data when available
       fars_vars <- grep("traffic_fatality|ped_bike|dui|speeding",
                        names(fars_for_merge), value = TRUE)
+      fars_vars <- fars_vars[!grepl("_data_quality$", fars_vars)]
       
       for (var in fars_vars) {
-        # Skip data quality columns for now
-        if (grepl("_data_quality$", var)) next
-        
-        # Check if this variable exists in FARS data
+        # Get the corresponding FARS column
         fars_col <- paste0(var, "_fars")
+        qual_col <- paste0(var, "_data_quality")
+        
+        # Update the value if FARS data is available
         if (fars_col %in% names(combined_data)) {
-          # Update values when FARS data is available
-          combined_data <- combined_data %>%
-            mutate(!!var := ifelse(!is.na(!!sym(fars_col)), 
-                                  !!sym(fars_col), 
-                                  !!sym(var)),
-                  !!paste0(var, "_data_quality") := 
-                    ifelse(!is.na(!!sym(fars_col)),
-                          direct_flag,
-                          !!sym(paste0(var, "_data_quality"))))
+          combined_data[[var]] <- ifelse(!is.na(combined_data[[fars_col]]), 
+                                        combined_data[[fars_col]], 
+                                        combined_data[[var]])
           
-          # Remove the temporary column
-          combined_data <- combined_data %>%
-            select(-!!fars_col)
+          # Update the quality flag
+          combined_data[[qual_col]] <- ifelse(!is.na(combined_data[[fars_col]]),
+                                             direct_flag,
+                                             combined_data[[qual_col]])
+          
+          # Clean up the temporary column
+          combined_data[[fars_col]] <- NULL
         }
       }
       
-      # Clean up temporary quality flag columns
-      temp_cols <- grep("_fars$|_data_quality_fars$", 
-                       names(combined_data), value = TRUE)
+      # Clean up any remaining temporary columns
+      temp_cols <- grep("_fars$", names(combined_data), value = TRUE)
       if (length(temp_cols) > 0) {
         combined_data <- combined_data %>%
           select(-all_of(temp_cols))
@@ -453,7 +474,7 @@ fetch_traffic_safety_data <- function(years,
                      ~., 
                      .names = "{.col}_data_quality")) %>%
         mutate(across(ends_with("_data_quality"), 
-                     ~as.character(if_else(is.na(.x), direct_flag, .x))))
+                     ~ifelse(is.na(.x), direct_flag, .x)))
       
       # Merge with combined_data
       combined_data <- combined_data %>%
@@ -526,15 +547,15 @@ fetch_traffic_safety_data <- function(years,
     vars_to_interpolate <- grep("count$|rate", names(combined_data), value = TRUE)
     vars_to_interpolate <- vars_to_interpolate[!grepl("_data_quality$", vars_to_interpolate)]
     
+    # Save original values for comparing changes
+    original_values <- combined_data
+    
     # Interpolate each variable for each county
     combined_data <- combined_data %>%
       group_by(fips) %>%
       mutate(across(all_of(vars_to_interpolate), 
                    ~if(any(!is.na(.))) {
-                     interpolated_values <- na.approx(.x, na.rm = FALSE)
-                     ifelse(is.na(.x) & !is.na(interpolated_values), 
-                           interpolated_values, 
-                           .x)
+                     zoo::na.approx(.x, na.rm = FALSE)
                    } else {
                      .x
                    })) %>%
@@ -545,178 +566,26 @@ fetch_traffic_safety_data <- function(years,
       quality_var <- paste0(var, "_data_quality")
       
       # Compare original and current values to identify interpolated ones
-      original_values <- all_counties_years[[var]]
-      current_values <- combined_data[[var]]
-      
-      # Update quality flags where values changed from NA to non-NA
-      # Convert any numeric quality flags to character first to avoid type mismatches
-      if (!is.character(combined_data[[quality_var]])) {
-        combined_data[[quality_var]] <- as.character(combined_data[[quality_var]])
-      }
       combined_data[[quality_var]] <- ifelse(
-        is.na(original_values) & !is.na(current_values) & 
-          combined_data[[quality_var]] == missing_flag,
+        is.na(original_values[[var]]) & !is.na(combined_data[[var]]),
         interpolated_flag,
         combined_data[[quality_var]]
       )
     }
   }
   
-  # Generate simulated data for missing values if allowed
-  if (allow_simulation) {
-    message("Generating simulated data for missing values...")
-    
-    # Define population data to use for simulation
-    # Typically we'd want to join with actual population data here
-    # But for simplicity, we'll use a fictional per-county approach
-    
-    # Get a list of counties with missing data
-    counties_missing_data <- combined_data %>%
-      group_by(fips) %>%
-      summarise(has_fatality_data = any(!is.na(traffic_fatality_count)),
-               has_injury_data = any(!is.na(traffic_injury_count)),
-               has_ped_bike_data = any(!is.na(ped_bike_fatality_count)),
-               has_dui_data = any(!is.na(dui_fatality_count)),
-               has_speeding_data = any(!is.na(speeding_fatality_count)))
-    
-    # For counties with NO data across all years, simulate based on 
-    # counties with similar characteristics (e.g., population size, urbanicity)
-    
-    # Function to generate simulated counts based on population patterns
-    simulate_traffic_data <- function(combined_data, county_fips) {
-      # First try to find similar counties with data
-      # Here we're just using a simplified random approach
-      # A real implementation would use population, geography, etc.
-      
-      # Get all years for this county
-      county_data <- combined_data %>%
-        filter(fips == county_fips)
-      
-      if (nrow(county_data) == 0) return(NULL)
-      
-      # Get baseline fatality rates from counties with data
-      counties_with_data <- combined_data %>%
-        filter(!is.na(traffic_fatality_rate_per_100k)) %>%
-        group_by(year) %>%
-        summarise(
-          avg_fatality_rate = mean(traffic_fatality_rate_per_100k, na.rm = TRUE),
-          avg_injury_rate = mean(traffic_injury_rate_per_100k, na.rm = TRUE),
-          avg_ped_bike_rate = mean(ped_bike_fatality_rate_per_100k, na.rm = TRUE),
-          avg_dui_rate = mean(dui_fatality_rate_per_100k, na.rm = TRUE),
-          avg_speeding_rate = mean(speeding_fatality_rate_per_100k, na.rm = TRUE)
-        )
-      
-      # Simulate all missing data using national averages and random variation
-      # Add modest random variation to make it realistic
-      simulated_data <- county_data %>%
-        left_join(counties_with_data, by = "year") %>%
-        rowwise() %>%
-        mutate(
-          # Only simulate if current value is NA
-          # For rates
-          traffic_fatality_rate_per_100k = if_else(
-            is.na(traffic_fatality_rate_per_100k),
-            avg_fatality_rate * runif(1, 0.7, 1.3),
-            traffic_fatality_rate_per_100k
-          ),
-          traffic_injury_rate_per_100k = if_else(
-            is.na(traffic_injury_rate_per_100k),
-            avg_injury_rate * runif(1, 0.7, 1.3),
-            traffic_injury_rate_per_100k
-          ),
-          ped_bike_fatality_rate_per_100k = if_else(
-            is.na(ped_bike_fatality_rate_per_100k),
-            avg_ped_bike_rate * runif(1, 0.7, 1.3),
-            ped_bike_fatality_rate_per_100k
-          ),
-          dui_fatality_rate_per_100k = if_else(
-            is.na(dui_fatality_rate_per_100k),
-            avg_dui_rate * runif(1, 0.7, 1.3),
-            dui_fatality_rate_per_100k
-          ),
-          speeding_fatality_rate_per_100k = if_else(
-            is.na(speeding_fatality_rate_per_100k),
-            avg_speeding_rate * runif(1, 0.7, 1.3),
-            speeding_fatality_rate_per_100k
-          ),
-          
-          # Update data quality flags for simulated rates
-          traffic_fatality_rate_per_100k_data_quality = if_else(
-            is.na(traffic_fatality_rate_per_100k_data_quality) | 
-              traffic_fatality_rate_per_100k_data_quality == missing_flag,
-            simulated_flag,
-            traffic_fatality_rate_per_100k_data_quality
-          ),
-          traffic_injury_rate_per_100k_data_quality = if_else(
-            is.na(traffic_injury_rate_per_100k_data_quality) | 
-              traffic_injury_rate_per_100k_data_quality == missing_flag,
-            simulated_flag,
-            traffic_injury_rate_per_100k_data_quality
-          ),
-          ped_bike_fatality_rate_per_100k_data_quality = if_else(
-            is.na(ped_bike_fatality_rate_per_100k_data_quality) | 
-              ped_bike_fatality_rate_per_100k_data_quality == missing_flag,
-            simulated_flag,
-            ped_bike_fatality_rate_per_100k_data_quality
-          ),
-          dui_fatality_rate_per_100k_data_quality = if_else(
-            is.na(dui_fatality_rate_per_100k_data_quality) | 
-              dui_fatality_rate_per_100k_data_quality == missing_flag,
-            simulated_flag,
-            dui_fatality_rate_per_100k_data_quality
-          ),
-          speeding_fatality_rate_per_100k_data_quality = if_else(
-            is.na(speeding_fatality_rate_per_100k_data_quality) | 
-              speeding_fatality_rate_per_100k_data_quality == missing_flag,
-            simulated_flag,
-            speeding_fatality_rate_per_100k_data_quality
-          )
-        ) %>%
-        ungroup() %>%
-        # Remove the average columns
-        select(-starts_with("avg_"))
-      
-      return(simulated_data)
-    }
-    
-    # Apply simulation to counties with missing data
-    message("Applying simulation to counties with missing data...")
-    
-    # Get list of FIPS codes
-    all_fips <- unique(combined_data$fips)
-    
-    # Process each county to ensure we don't modify the entire dataset at once
-    # This is more memory efficient for large datasets
-    counties_simulated <- list()
-    
-    for (fips_code in all_fips) {
-      simulated_county <- simulate_traffic_data(combined_data, fips_code)
-      if (!is.null(simulated_county)) {
-        counties_simulated[[fips_code]] <- simulated_county
-      }
-    }
-    
-    # Combine simulated data for all counties
-    if (length(counties_simulated) > 0) {
-      combined_data <- bind_rows(counties_simulated)
-    }
-  }
-  
-  # Calculate any derived metrics and add to the dataset
-  message("Calculating derived metrics...")
-  
-  # Join with population data if available
-  if (!is.null(population_data)) {
-    message("Joining with population data to calculate accurate rates...")
+  # Calculate rates using population data if available
+  if (!is.null(population_data) && nrow(population_data) > 0) {
+    message("Calculating rates using population data...")
     
     # Ensure population data has standardized FIPS codes
     population_data <- population_data %>%
       mutate(fips = sprintf("%05d", as.numeric(fips)))
     
-    # Join with population data
+    # Join with population data (keeping only required columns)
     combined_data <- combined_data %>%
       left_join(population_data %>% select(fips, year, population), 
-                by = c("fips", "year"))
+               by = c("fips", "year"))
     
     # Calculate rates using actual population
     combined_data <- combined_data %>%
@@ -753,27 +622,37 @@ fetch_traffic_safety_data <- function(years,
     combined_data <- combined_data %>%
       mutate(
         traffic_fatality_rate_per_100k_data_quality = ifelse(
-          !is.na(traffic_fatality_count) & !is.na(population) & population > 0 & is.na(traffic_fatality_rate_per_100k_data_quality),
+          !is.na(traffic_fatality_count) & !is.na(population) & population > 0 & 
+            (is.na(traffic_fatality_rate_per_100k_data_quality) || 
+             traffic_fatality_rate_per_100k_data_quality == missing_flag),
           "calculated",
           traffic_fatality_rate_per_100k_data_quality
         ),
         traffic_injury_rate_per_100k_data_quality = ifelse(
-          !is.na(traffic_injury_count) & !is.na(population) & population > 0 & is.na(traffic_injury_rate_per_100k_data_quality),
+          !is.na(traffic_injury_count) & !is.na(population) & population > 0 & 
+            (is.na(traffic_injury_rate_per_100k_data_quality) || 
+             traffic_injury_rate_per_100k_data_quality == missing_flag),
           "calculated",
           traffic_injury_rate_per_100k_data_quality
         ),
         ped_bike_fatality_rate_per_100k_data_quality = ifelse(
-          !is.na(ped_bike_fatality_count) & !is.na(population) & population > 0 & is.na(ped_bike_fatality_rate_per_100k_data_quality),
+          !is.na(ped_bike_fatality_count) & !is.na(population) & population > 0 & 
+            (is.na(ped_bike_fatality_rate_per_100k_data_quality) || 
+             ped_bike_fatality_rate_per_100k_data_quality == missing_flag),
           "calculated",
           ped_bike_fatality_rate_per_100k_data_quality
         ),
         dui_fatality_rate_per_100k_data_quality = ifelse(
-          !is.na(dui_fatality_count) & !is.na(population) & population > 0 & is.na(dui_fatality_rate_per_100k_data_quality),
+          !is.na(dui_fatality_count) & !is.na(population) & population > 0 & 
+            (is.na(dui_fatality_rate_per_100k_data_quality) || 
+             dui_fatality_rate_per_100k_data_quality == missing_flag),
           "calculated",
           dui_fatality_rate_per_100k_data_quality
         ),
         speeding_fatality_rate_per_100k_data_quality = ifelse(
-          !is.na(speeding_fatality_count) & !is.na(population) & population > 0 & is.na(speeding_fatality_rate_per_100k_data_quality),
+          !is.na(speeding_fatality_count) & !is.na(population) & population > 0 & 
+            (is.na(speeding_fatality_rate_per_100k_data_quality) || 
+             speeding_fatality_rate_per_100k_data_quality == missing_flag),
           "calculated",
           speeding_fatality_rate_per_100k_data_quality
         )
@@ -783,31 +662,6 @@ fetch_traffic_safety_data <- function(years,
                   sum(!is.na(combined_data$traffic_fatality_rate_per_100k) & 
                         combined_data$traffic_fatality_rate_per_100k_data_quality == "calculated"), 
                   "counties using actual population data"))
-  } else {
-    message("Population data not available. Using placeholder rate calculations.")
-    
-    # For any counties with counts but no rates, use national average rates as a rough approximation
-    # This is just a fallback and should be replaced with actual population data
-    if (any(!is.na(combined_data$traffic_fatality_count) & is.na(combined_data$traffic_fatality_rate_per_100k))) {
-      message("Warning: Using national average fatality rates for counties without population data")
-      
-      # Approximate population based on national average fatality rate of 11.7 per 100,000 (2019 NHTSA data)
-      avg_fatality_rate <- 11.7
-      
-      combined_data <- combined_data %>%
-        mutate(
-          traffic_fatality_rate_per_100k = ifelse(
-            !is.na(traffic_fatality_count) & is.na(traffic_fatality_rate_per_100k),
-            avg_fatality_rate,  # Use national average as placeholder
-            traffic_fatality_rate_per_100k
-          ),
-          traffic_fatality_rate_per_100k_data_quality = ifelse(
-            !is.na(traffic_fatality_count) & traffic_fatality_rate_per_100k == avg_fatality_rate,
-            "estimated",
-            traffic_fatality_rate_per_100k_data_quality
-          )
-        )
-    }
   }
   
   # Ensure we have GEOID for compatibility with the SDOH pipeline
@@ -843,11 +697,10 @@ fetch_traffic_safety_data <- function(years,
 get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   # Define API endpoints and file paths
   fars_api_base <- "https://crashviewer.nhtsa.dot.gov/CrashAPI/"
+  fars_data_url <- "https://www.nhtsa.gov/file-downloads?p=nhtsa/downloads/FARS/"
   
   # Create cache file path
-  fars_cache_file <- file.path(cache_dir, 
-                              paste0("fars_data_", 
-                                     min(years), "_", max(years), ".rds"))
+  fars_cache_file <- file.path(cache_dir, paste0("fars_data_", min(years), "_", max(years), ".rds"))
   
   # Check cache first
   if (file.exists(fars_cache_file) && !refresh_cache) {
@@ -880,112 +733,185 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
       message(paste("FARS data for", year, "may be preliminary or not yet available"))
     }
     
-    # Construct API endpoint for county-level data
-    # Note: This is a simplified example - the actual NHTSA API may have a different structure
-    endpoint <- paste0(fars_api_base, "crashes/GetCountiesByYear?year=", year)
+    # Prepare cache file for this year
+    year_cache_file <- file.path(cache_dir, paste0("fars_", year, ".rds"))
     
-    # Try to fetch data from API with error handling
-    year_data <- tryCatch({
-      response <- httr::GET(endpoint)
+    # Check if year data is already in cache
+    if (file.exists(year_cache_file) && !refresh_cache) {
+      message(paste("Loading FARS data for", year, "from cache"))
+      year_data <- readRDS(year_cache_file)
+    } else {
+      message(paste("Fetching FARS data for", year))
       
-      # Check if the request was successful
-      if (httr::status_code(response) == 200) {
-        # Parse the response content
-        content <- httr::content(response, "text", encoding = "UTF-8")
-        parsed <- jsonlite::fromJSON(content)
+      # First try API
+      api_data <- tryCatch({
+        # Construct API endpoint for county-level data
+        endpoint <- paste0(fars_api_base, "crashes/GetCrashesByLocation?year=", year, "&format=json")
         
-        # Extract the relevant data (structure depends on API response)
-        if (is.list(parsed) && "Results" %in% names(parsed)) {
-          return(parsed$Results)
-        } else {
-          warning(paste("Unexpected API response format for year", year))
-          return(NULL)
+        # Try to fetch data from API
+        response <- httr::GET(endpoint)
+        
+        # Check if the request was successful
+        if (httr::status_code(response) == 200) {
+          # Parse the response content
+          content <- httr::content(response, "text", encoding = "UTF-8")
+          parsed <- jsonlite::fromJSON(content)
+          
+          # Extract the relevant data
+          if (is.list(parsed) && !is.null(parsed$Results)) {
+            # Process the results
+            results_df <- as.data.frame(parsed$Results)
+            
+            # Add year column if not present
+            if (!"year" %in% names(results_df)) {
+              results_df$year <- year
+            }
+            
+            return(results_df)
+          }
         }
+        # If we get here, the API request failed or returned unexpected format
+        NULL
+      }, error = function(e) {
+        warning(paste("API error for year", year, ":", e$message))
+        NULL
+      })
+      
+      # If API failed, try downloading the raw data files
+      if (is.null(api_data)) {
+        raw_data <- tryCatch({
+          # Construct URL for the data file
+          data_url <- paste0(fars_data_url, year, "/FARS", year, "NationalCSV.zip")
+          
+          # Create a temporary file to download to
+          temp_zip <- tempfile(fileext = ".zip")
+          
+          # Try to download the file
+          download_result <- tryCatch({
+            utils::download.file(data_url, temp_zip, mode = "wb", quiet = TRUE)
+            TRUE
+          }, error = function(e) {
+            warning(paste("Download failed:", e$message))
+            FALSE
+          })
+          
+          if (download_result) {
+            # Extract the relevant files
+            temp_dir <- tempdir()
+            utils::unzip(temp_zip, exdir = temp_dir)
+            
+            # Look for accident.csv, person.csv, and vehicle.csv
+            accident_file <- list.files(temp_dir, pattern = "accident\\.csv$", full.names = TRUE, recursive = TRUE)[1]
+            person_file <- list.files(temp_dir, pattern = "person\\.csv$", full.names = TRUE, recursive = TRUE)[1]
+            vehicle_file <- list.files(temp_dir, pattern = "vehicle\\.csv$", full.names = TRUE, recursive = TRUE)[1]
+            
+            if (!is.na(accident_file) && file.exists(accident_file)) {
+              # Read the accident data
+              accident_data <- read.csv(accident_file, stringsAsFactors = FALSE)
+              
+              # Process to county level
+              county_data <- accident_data %>%
+                group_by(STATE, COUNTY) %>%
+                summarize(
+                  traffic_fatality_count = n(),
+                  speeding_related = sum(as.numeric(SPEEDREL) > 0, na.rm = TRUE),
+                  .groups = "drop"
+                ) %>%
+                mutate(
+                  fips = sprintf("%02d%03d", STATE, COUNTY),
+                  year = year,
+                  speeding_fatality_count = speeding_related
+                ) %>%
+                select(-speeding_related)
+              
+              # Add DUI information if available
+              if (!is.na(person_file) && file.exists(person_file) &&
+                  !is.na(vehicle_file) && file.exists(vehicle_file)) {
+                
+                # Read person and vehicle data
+                person_data <- read.csv(person_file, stringsAsFactors = FALSE)
+                vehicle_data <- read.csv(vehicle_file, stringsAsFactors = FALSE)
+                
+                # Get DUI counts by joining with vehicle data
+                if ("DRINKING" %in% names(vehicle_data) || "DRUNK_DR" %in% names(vehicle_data)) {
+                  # Determine which column to use
+                  drunk_col <- if ("DRUNK_DR" %in% names(vehicle_data)) "DRUNK_DR" else "DRINKING"
+                  
+                  # Count DUI fatalities by county
+                  dui_counts <- vehicle_data %>%
+                    filter(get(drunk_col) == 1) %>%
+                    left_join(accident_data %>% select(ST_CASE, STATE, COUNTY), by = "ST_CASE") %>%
+                    group_by(STATE, COUNTY) %>%
+                    summarize(
+                      dui_fatality_count = n_distinct(ST_CASE),
+                      .groups = "drop"
+                    ) %>%
+                    mutate(fips = sprintf("%02d%03d", STATE, COUNTY))
+                  
+                  # Add to county data
+                  county_data <- county_data %>%
+                    left_join(dui_counts %>% select(fips, dui_fatality_count), by = "fips")
+                }
+                
+                # Get pedestrian/cyclist fatalities
+                if ("PER_TYP" %in% names(person_data)) {
+                  # Count pedestrian/cyclist fatalities by county
+                  ped_bike_counts <- person_data %>%
+                    filter(PER_TYP %in% c(1, 2, 3, 4, 5, 6, 7)) %>%  # Pedestrian and cyclist codes
+                    left_join(accident_data %>% select(ST_CASE, STATE, COUNTY), by = "ST_CASE") %>%
+                    group_by(STATE, COUNTY) %>%
+                    summarize(
+                      ped_bike_fatality_count = n_distinct(ST_CASE),
+                      .groups = "drop"
+                    ) %>%
+                    mutate(fips = sprintf("%02d%03d", STATE, COUNTY))
+                  
+                  # Add to county data
+                  county_data <- county_data %>%
+                    left_join(ped_bike_counts %>% select(fips, ped_bike_fatality_count), by = "fips")
+                }
+              }
+              
+              return(county_data)
+            }
+          }
+          NULL
+        }, error = function(e) {
+          warning(paste("Raw data processing error:", e$message))
+          NULL
+        }, finally = {
+          # Clean up temporary files
+          if (exists("temp_zip") && file.exists(temp_zip)) file.remove(temp_zip)
+        })
+        
+        year_data <- raw_data
       } else {
-        warning(paste("API request failed for year", year, "with status code", 
-                     httr::status_code(response)))
-        return(NULL)
+        year_data <- api_data
       }
-    }, error = function(e) {
-      warning(paste("Error fetching FARS data for year", year, ":", e$message))
-      return(NULL)
-    })
+      
+      # If we got data, save it to cache
+      if (!is.null(year_data) && nrow(year_data) > 0) {
+        saveRDS(year_data, year_cache_file)
+      } else {
+        warning(paste("No FARS data available for", year))
+        year_data <- NULL
+      }
+    }
     
-    # If we got data, add the year and append to the result
+    # Append this year's data to the result
     if (!is.null(year_data) && nrow(year_data) > 0) {
-      year_data$year <- year
+      # Ensure year column exists
+      if (!"year" %in% names(year_data)) {
+        year_data$year <- year
+      }
+      
       fars_data <- bind_rows(fars_data, year_data)
     }
   }
   
-  # If we couldn't get any data from the API, try to read from local files
+  # If we couldn't get any data, return NULL
   if (nrow(fars_data) == 0) {
-    message("Attempting to read FARS data from local files...")
-    
-    # Check common locations for FARS data files
-    data_dirs <- c(
-      "data/traffic_safety",
-      "data/fars",
-      "data/nhtsa"
-    )
-    
-    for (dir in data_dirs) {
-      if (dir.exists(dir)) {
-        # Look for CSV, Excel, or RDS files
-        files <- list.files(dir, pattern = "fars|traffic|crash", 
-                          full.names = TRUE, ignore.case = TRUE)
-        
-        if (length(files) > 0) {
-          # Load each file based on extension
-          for (file in files) {
-            file_data <- NULL
-            
-            if (grepl("\\.csv$", file, ignore.case = TRUE)) {
-              file_data <- tryCatch({
-                read.csv(file, stringsAsFactors = FALSE)
-              }, error = function(e) NULL)
-            } else if (grepl("\\.xlsx?$", file, ignore.case = TRUE)) {
-              file_data <- tryCatch({
-                readxl::read_excel(file)
-              }, error = function(e) NULL)
-            } else if (grepl("\\.rds$", file, ignore.case = TRUE)) {
-              file_data <- tryCatch({
-                readRDS(file)
-              }, error = function(e) NULL)
-            }
-            
-            # If we got data, check for year column
-            if (!is.null(file_data) && nrow(file_data) > 0) {
-              # If no year column, try to extract year from filename
-              if (!"year" %in% names(file_data)) {
-                # Try to extract year from filename (e.g., "fars_2015.csv")
-                year_match <- regexpr("[0-9]{4}", basename(file))
-                if (year_match > 0) {
-                  extract_year <- as.numeric(
-                    substr(basename(file), year_match, year_match + 3)
-                  )
-                  
-                  if (!is.na(extract_year) && extract_year >= 1975) {
-                    file_data$year <- extract_year
-                  }
-                }
-              }
-              
-              # Append to main data frame if it has the necessary columns
-              if ("year" %in% names(file_data) && 
-                  any(grepl("county|fips|geoid", names(file_data), ignore.case = TRUE))) {
-                fars_data <- bind_rows(fars_data, file_data)
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  # If we still have no data, return NULL
-  if (nrow(fars_data) == 0) {
-    warning("Could not retrieve FARS data from API or local files")
+    warning("Could not retrieve FARS data for any of the requested years")
     return(NULL)
   }
   
@@ -995,87 +921,39 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   
   # Ensure we have a fips column
   if (!"fips" %in% names(fars_data)) {
-    # Try to create fips from state and county codes if available
-    if (all(c("state", "county") %in% names(fars_data)) || 
-        all(c("state_code", "county_code") %in% names(fars_data))) {
-      
-      # Standardize state/county code column names
-      if ("state_code" %in% names(fars_data)) {
-        fars_data <- fars_data %>%
-          rename(state = state_code)
-      }
-      if ("county_code" %in% names(fars_data)) {
-        fars_data <- fars_data %>%
-          rename(county = county_code)
-      }
-      
-      # Create FIPS code by combining state and county codes
+    # Try to create fips from state and county codes
+    if (all(c("state", "county") %in% names(fars_data))) {
       fars_data <- fars_data %>%
         mutate(
-          # Ensure state and county codes are formatted correctly
           state = sprintf("%02d", as.numeric(state)),
           county = sprintf("%03d", as.numeric(county)),
-          # Combine to create FIPS
           fips = paste0(state, county)
         )
     } else if ("geoid" %in% names(fars_data)) {
-      # If geoid exists, use it as fips
       fars_data <- fars_data %>%
         rename(fips = geoid)
     } else if ("county_fips" %in% names(fars_data)) {
-      # If county_fips exists, use it as fips
       fars_data <- fars_data %>%
         rename(fips = county_fips)
     }
   }
   
-  # Filter to years requested and counties with valid FIPS
+  # Standardize data types
+  fars_data <- fars_data %>%
+    mutate(
+      fips = as.character(fips),
+      year = as.numeric(year),
+      # Ensure all numeric columns are properly typed
+      across(matches("count|rate|number|total"), ~as.numeric(as.character(.x)))
+    )
+  
+  # Filter to valid records
   fars_data <- fars_data %>%
     filter(year %in% years,
            !is.na(fips),
            nchar(fips) == 5)
   
-  # Calculate traffic safety metrics if not present
-  # This depends on the available columns in the data
-  
-  # Check for key fatality columns
-  if (!"traffic_fatality_count" %in% names(fars_data)) {
-    # Try to find a suitable column
-    fatality_cols <- grep("fatal|death|killed", names(fars_data), 
-                         value = TRUE, ignore.case = TRUE)
-    
-    if (length(fatality_cols) > 0) {
-      # Use the first matching column as the fatality count
-      fars_data <- fars_data %>%
-        rename(traffic_fatality_count = !!fatality_cols[1])
-    }
-  }
-  
-  # Standardize column data types
-  fars_data <- fars_data %>%
-    mutate(
-      fips = as.character(fips),
-      year = as.numeric(year),
-      # Convert any character numeric columns to numeric
-      across(matches("count|rate|number|total"), 
-            ~as.numeric(as.character(.x)))
-    )
-  
-  # Calculate rates if counts available but rates are not
-  if ("traffic_fatality_count" %in% names(fars_data) && 
-      !"traffic_fatality_rate_per_100k" %in% names(fars_data)) {
-    
-    # In a real implementation, join with population data
-    # For now, use placeholder logic to demonstrate
-    fars_data <- fars_data %>%
-      mutate(
-        traffic_fatality_rate_per_100k = NA_real_
-        # In practice, this would be:
-        # traffic_fatality_count / (population / 100000)
-      )
-  }
-  
-  # Save processed data to cache
+  # Save the processed data to cache
   saveRDS(fars_data, fars_cache_file)
   
   return(fars_data)
@@ -1093,9 +971,7 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
 #' @importFrom dplyr mutate filter select rename
 get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
   # Define cache file path
-  cdc_cache_file <- file.path(cache_dir, 
-                             paste0("cdc_wonder_data_", 
-                                    min(years), "_", max(years), ".rds"))
+  cdc_cache_file <- file.path(cache_dir, paste0("cdc_wonder_data_", min(years), "_", max(years), ".rds"))
   
   # Check cache first
   if (file.exists(cdc_cache_file) && !refresh_cache) {
@@ -1105,162 +981,215 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
   
   message("Fetching transportation mortality data from CDC WONDER...")
   
-  # CDC WONDER API access is complex and requires formal permissions
-  # For demonstration purposes, we'll use a simplified approach
-  # In a real implementation, this would use the CDC WONDER API following their protocols
+  # CDC WONDER API access requires formal permissions and is complex
+  # For this implementation, we'll use CDC's publicly available datasets
   
-  # Check for local CDC data files
-  cdc_files_found <- FALSE
+  # Initialize data frame to store results
   cdc_data <- data.frame()
   
-  # Look for local CDC data files
-  data_dirs <- c(
-    "data/traffic_safety",
-    "data/cdc_wonder",
-    "data/cdc",
-    "data/mortality"
+  # Define available CDC WONDER datasets by year range
+  datasets <- list(
+    "D76" = c(1999:2019),  # Multiple Cause of Death 1999-2019
+    "D77" = c(2018:2022)   # Multiple Cause of Death 2018-2022
   )
   
-  for (dir in data_dirs) {
-    if (dir.exists(dir)) {
-      # Look for CSV, Excel, or RDS files
-      files <- list.files(dir, pattern = "cdc|wonder|mortality|transport", 
-                        full.names = TRUE, ignore.case = TRUE)
-      
-      if (length(files) > 0) {
-        # Load each file based on extension
-        for (file in files) {
-          file_data <- NULL
+  # Function to query CDC WONDER API (requires API access)
+  query_cdc_wonder <- function(dataset, query_years) {
+    # This is a simplified version - actual implementation would use CDC WONDER API
+    # In a real implementation, you would:
+    # 1. Build XML request following CDC WONDER specifications
+    # 2. Send request via httr::POST
+    # 3. Parse XML response
+    # 4. Extract county-level transportation-related mortality data
+    
+    # For now, we'll look for locally cached data or downloaded data
+    # that matches the CDC WONDER format
+    
+    message(paste("Looking for", dataset, "data for years", 
+                  min(query_years), "to", max(query_years)))
+    
+    # Check for local CDC data files
+    data_files <- NULL
+    
+    data_dirs <- c(
+      "data/traffic_safety/cdc",
+      "data/cdc_wonder",
+      "data/cdc"
+    )
+    
+    # Create pattern to match the specific dataset and years
+    pattern <- paste0(dataset, ".*", paste0(query_years, collapse = "|"))
+    
+    for (dir in data_dirs) {
+      if (dir.exists(dir)) {
+        # Look for CSV, Excel, or RDS files
+        files <- list.files(dir, pattern = pattern, 
+                          full.names = TRUE, recursive = TRUE)
+        
+        if (length(files) > 0) {
+          data_files <- files
+          break
+        }
+      }
+    }
+    
+    # If no specific dataset files, look for any CDC data
+    if (is.null(data_files)) {
+      for (dir in data_dirs) {
+        if (dir.exists(dir)) {
+          # Look for CDC files with transport-related names
+          files <- list.files(dir, pattern = "transport|traffic|vehicle|mortality", 
+                            full.names = TRUE, recursive = TRUE)
           
-          if (grepl("\\.csv$", file, ignore.case = TRUE)) {
-            file_data <- tryCatch({
-              read.csv(file, stringsAsFactors = FALSE)
-            }, error = function(e) NULL)
-          } else if (grepl("\\.xlsx?$", file, ignore.case = TRUE)) {
-            file_data <- tryCatch({
-              readxl::read_excel(file)
-            }, error = function(e) NULL)
-          } else if (grepl("\\.rds$", file, ignore.case = TRUE)) {
-            file_data <- tryCatch({
-              readRDS(file)
-            }, error = function(e) NULL)
-          }
-          
-          # If we got data, append to the main data frame
-          if (!is.null(file_data) && nrow(file_data) > 0) {
-            # Add year if not present
-            if (!"year" %in% names(file_data)) {
-              year_match <- regexpr("[0-9]{4}", basename(file))
-              if (year_match > 0) {
-                extract_year <- as.numeric(
-                  substr(basename(file), year_match, year_match + 3)
-                )
-                
-                if (!is.na(extract_year)) {
-                  file_data$year <- extract_year
-                }
-              }
-            }
-            
-            cdc_data <- bind_rows(cdc_data, file_data)
-            cdc_files_found <- TRUE
+          if (length(files) > 0) {
+            data_files <- files
+            break
           }
         }
       }
     }
+    
+    # If we found files, try to read them
+    if (!is.null(data_files) && length(data_files) > 0) {
+      # Initialize results
+      combined_data <- data.frame()
+      
+      for (file in data_files) {
+        file_data <- NULL
+        
+        if (grepl("\\.csv$", file, ignore.case = TRUE)) {
+          file_data <- tryCatch({
+            read.csv(file, stringsAsFactors = FALSE)
+          }, error = function(e) NULL)
+        } else if (grepl("\\.xlsx?$", file, ignore.case = TRUE)) {
+          file_data <- tryCatch({
+            readxl::read_excel(file)
+          }, error = function(e) NULL)
+        } else if (grepl("\\.rds$", file, ignore.case = TRUE)) {
+          file_data <- tryCatch({
+            readRDS(file)
+          }, error = function(e) NULL)
+        }
+        
+        # If we got data, filter to transportation-related causes
+        if (!is.null(file_data) && nrow(file_data) > 0) {
+          # Check for ICD code columns
+          icd_cols <- grep("icd|^cod|cause", names(file_data), value = TRUE, ignore.case = TRUE)
+          
+          if (length(icd_cols) > 0) {
+            # Filter to transportation-related ICD codes (V01-V99)
+            # This is a simplification - real implementation would be more precise
+            for (icd_col in icd_cols) {
+              if (any(grepl("^V[0-9]{2}", file_data[[icd_col]]))) {
+                file_data <- file_data %>%
+                  filter(grepl("^V[0-9]{2}", !!sym(icd_col)))
+                break
+              }
+            }
+          }
+          
+          # Check for year column and filter to requested years
+          if ("year" %in% names(file_data)) {
+            file_data <- file_data %>%
+              filter(year %in% query_years)
+          } else {
+            # Try to extract year from file name
+            year_match <- regexpr("[0-9]{4}", basename(file))
+            if (year_match > 0) {
+              extract_year <- as.numeric(
+                substr(basename(file), year_match, year_match + 3)
+              )
+              
+              if (!is.na(extract_year) && extract_year %in% query_years) {
+                file_data$year <- extract_year
+              }
+            }
+          }
+          
+          # Combine with results
+          combined_data <- bind_rows(combined_data, file_data)
+        }
+      }
+      
+      return(combined_data)
+    }
+    
+    # If no data found, return empty data frame
+    return(data.frame())
   }
   
-  # If no local files, create simulated CDC data for demonstration
-  if (!cdc_files_found) {
-    message("No CDC WONDER data files found. Creating demonstration data...")
+  # Process each year range with the appropriate dataset
+  for (dataset_name in names(datasets)) {
+    dataset_years <- datasets[[dataset_name]]
+    overlap_years <- intersect(years, dataset_years)
     
-    # Get a list of counties for simulation
-    counties <- tryCatch({
-      tigris::counties(cb = TRUE)
-    }, error = function(e) {
-      # If tigris fails, create a basic template
-      message("Unable to fetch county data from tigris. Using basic template.")
-      data.frame(
-        GEOID = c("01001", "06037", "17031", "36061", "48201"),
-        NAME = c("Autauga County, Alabama", 
-                "Los Angeles County, California",
-                "Cook County, Illinois",
-                "New York County, New York",
-                "Harris County, Texas")
-      )
-    })
-    
-    # Create a simplified dataset with simulated values
-    set.seed(123) # For reproducibility
-    
-    # Expand to all years and counties
-    cdc_data <- expand.grid(
-      fips = counties$GEOID,
-      year = years[years >= 1999 & years <= as.numeric(format(Sys.Date(), "%Y"))],
-      stringsAsFactors = FALSE
-    )
-    
-    # Calculate transport mortality based on random patterns
-    # This is purely for demonstration - not real data
-    cdc_data <- cdc_data %>%
-      mutate(
-        # Generate random values for demonstration
-        transport_mortality_count = round(runif(n(), 0, 100)),
-        transport_mortality_rate_per_100k = transport_mortality_count / runif(n(), 0.5, 10)
-      )
-  }
-  
-  # Standardize column names
-  cdc_data <- cdc_data %>%
-    rename_with(~tolower(gsub(" ", "_", .x)))
-  
-  # Ensure we have a fips column
-  if (!"fips" %in% names(cdc_data)) {
-    # Check for alternative column names
-    if ("county_code" %in% names(cdc_data)) {
-      cdc_data <- cdc_data %>%
-        rename(fips = county_code)
-    } else if ("county_fips" %in% names(cdc_data)) {
-      cdc_data <- cdc_data %>%
-        rename(fips = county_fips)
-    } else if ("geoid" %in% names(cdc_data)) {
-      cdc_data <- cdc_data %>%
-        rename(fips = geoid)
+    if (length(overlap_years) > 0) {
+      # Query this dataset for the overlapping years
+      dataset_data <- query_cdc_wonder(dataset_name, overlap_years)
+      
+      if (nrow(dataset_data) > 0) {
+        cdc_data <- bind_rows(cdc_data, dataset_data)
+      }
     }
   }
   
-  # Filter to years requested and counties with valid FIPS
-  cdc_data <- cdc_data %>%
-    filter(year %in% years,
-           !is.na(fips),
-           nchar(fips) == 5)
-  
-  # Standardize column data types
-  cdc_data <- cdc_data %>%
-    mutate(
-      fips = as.character(fips),
-      year = as.numeric(year),
-      # Convert any character numeric columns to numeric
-      across(matches("count|rate|number|total"), 
-            ~as.numeric(as.character(.x)))
-    )
-  
-  # Filter to transportation-related mortality
-  # In real CDC data, this would filter by ICD-10 codes (V01-V99)
-  if (any(grepl("icd|code", names(cdc_data), ignore.case = TRUE))) {
-    icd_col <- grep("icd|code", names(cdc_data), value = TRUE, ignore.case = TRUE)[1]
-    
-    # Filter to transportation mortality ICD-10 codes (V01-V99)
+  # If we have any data, process it
+  if (nrow(cdc_data) > 0) {
+    # Standardize column names
     cdc_data <- cdc_data %>%
-      filter(grepl("^V[0-9]{2}$", !!sym(icd_col)) | 
-             # Also include common traffic-related terms in cause columns
-             if(any(grepl("cause", names(cdc_data), ignore.case = TRUE))) {
-               cause_col <- grep("cause", names(cdc_data), value = TRUE, ignore.case = TRUE)[1]
-               grepl("traffic|transport|vehicle|collision|crash", 
-                    !!sym(cause_col), ignore.case = TRUE)
-             } else {
-               TRUE
-             })
+      rename_with(~tolower(gsub(" ", "_", .x)))
+    
+    # Ensure we have a fips column
+    if (!"fips" %in% names(cdc_data)) {
+      # Check for alternative column names
+      if ("county_code" %in% names(cdc_data)) {
+        cdc_data <- cdc_data %>%
+          rename(fips = county_code)
+      } else if ("county_fips" %in% names(cdc_data)) {
+        cdc_data <- cdc_data %>%
+          rename(fips = county_fips)
+      } else if ("geoid" %in% names(cdc_data)) {
+        cdc_data <- cdc_data %>%
+          rename(fips = geoid)
+      } else if (all(c("state_code", "county_code") %in% names(cdc_data))) {
+        cdc_data <- cdc_data %>%
+          mutate(
+            state_code = sprintf("%02d", as.numeric(state_code)),
+            county_code = sprintf("%03d", as.numeric(county_code)),
+            fips = paste0(state_code, county_code)
+          )
+      }
+    }
+    
+    # Standardize column data types
+    cdc_data <- cdc_data %>%
+      mutate(
+        fips = as.character(fips),
+        year = as.numeric(year),
+        # Ensure all numeric columns are properly typed
+        across(matches("count|rate|number|total|deaths"), 
+               ~as.numeric(as.character(.x)))
+      )
+    
+    # Filter to valid records
+    cdc_data <- cdc_data %>%
+      filter(year %in% years,
+             !is.na(fips),
+             nchar(fips) == 5)
+    
+    # Rename deaths column to transport_mortality_count if present
+    if ("deaths" %in% names(cdc_data) && !"transport_mortality_count" %in% names(cdc_data)) {
+      cdc_data <- cdc_data %>%
+        rename(transport_mortality_count = deaths)
+    }
+    
+    # Check for crucial columns
+    if (!"transport_mortality_count" %in% names(cdc_data) && 
+        !"traffic_fatality_count" %in% names(cdc_data)) {
+      warning("CDC data lacks mortality count columns. Data may be incomplete.")
+    }
+  } else {
+    warning("No CDC WONDER data found for the requested years. Consider downloading CDC WONDER data manually.")
   }
   
   # Save processed data to cache
