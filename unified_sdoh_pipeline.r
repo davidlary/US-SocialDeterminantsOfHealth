@@ -803,79 +803,93 @@ if (exists("fetch_digital_access_data")) {
   )
 }
 
-# Traffic safety data - STUB IMPLEMENTATION
-log_message("Using STUB implementation of traffic safety modules to prevent pipeline hanging", 
-          level = "INFO", show_console = TRUE)
+# Traffic safety data with enhanced module
+log_message("Loading traffic safety integration module...", level = "INFO", show_console = TRUE)
 
-# Source the stub modules first with proper error handling
-traffic_module_files <- c(
-  "traffic_safety_integration.r",
-  "traffic_safety_validation.r",
-  "traffic_safety_cache.r",
-  "traffic_safety_forecasting.r",
-  "traffic_safety_geospatial.r"
-)
+# First check if integration module exists and try to load it
+integration_path <- file.path(root_dir, "traffic_safety_integration.r")
+traffic_safety_enhanced <- FALSE
 
-# Create and source stub modules
-for (module_file in traffic_module_files) {
-  module_path <- file.path(root_dir, module_file)
+if (file.exists(integration_path)) {
   tryCatch({
-    log_message(paste("Loading stub module:", module_file), level = "INFO", show_console = TRUE)
-    source(module_path)
+    # Set a timeout for loading the integration module
+    old_timeout <- options(timeout = 30)
+    on.exit(options(old_timeout), add = TRUE)
+    
+    # Try to load the module
+    log_message("Sourcing traffic safety integration module...", level = "INFO")
+    source(integration_path)
+    
+    # Check if the enhanced function was loaded successfully
+    if (exists("fetch_enhanced_traffic_safety_data")) {
+      traffic_safety_enhanced <- TRUE
+      log_message("Enhanced traffic safety module loaded successfully", level = "INFO", show_console = TRUE)
+    }
   }, error = function(e) {
-    log_message(paste("Error loading stub module", module_file, ":", e$message), 
-              level = "WARN", show_console = TRUE)
+    log_message(paste("Error loading traffic safety integration module:", e$message), 
+                level = "WARN", show_console = TRUE)
   })
 }
 
-# Use the enhanced version but with stub implementations
-if (exists("fetch_enhanced_traffic_safety_data")) {
-  log_message("Using stub implementation of fetch_enhanced_traffic_safety_data", 
-            level = "INFO", show_console = TRUE)
-              
-  extended_data_sources$traffic_safety <- fetch_enhanced_traffic_safety_data(
-    years = all_years,
-    cache_dir = extended_cache_dir,
-    refresh_cache = refresh_cache,
-    allow_simulation = allow_simulation,
-    allow_interpolation = allow_interpolation,
-    use_validation = TRUE, 
-    use_optimized_cache = TRUE,
-    generate_forecasts = TRUE,
-    spatial_analysis = TRUE
-  )
+# Use the enhanced module if available, otherwise fall back to basic
+if (traffic_safety_enhanced) {
+  log_message("Using enhanced traffic safety data pipeline", level = "INFO", show_console = TRUE)
   
-  # Generate stub visualizations
-  if (!is.null(extended_data_sources$traffic_safety) && 
-      nrow(extended_data_sources$traffic_safety) > 0) {
-    log_message("Generating stub traffic safety visualizations...", level = "INFO", show_console = TRUE)
-    
-    vis_files <- create_traffic_safety_visualizations(
-      extended_data_sources$traffic_safety,
-      output_dir = file.path(output_dir, "visualizations/traffic_safety"),
-      create_maps = TRUE,
-      create_forecast_plots = TRUE,
-      create_animation = FALSE
+  # Use enhanced fetch with explicit timeout
+  traffic_data <- tryCatch({
+    # Call the enhanced fetcher with reasonable feature set
+    fetch_enhanced_traffic_safety_data(
+      years = all_years,
+      cache_dir = cache_dir,
+      refresh_cache = refresh_cache,
+      allow_interpolation = allow_interpolation,
+      allow_simulation = allow_simulation,
+      use_validation = TRUE,
+      use_optimized_cache = TRUE,
+      generate_forecasts = FALSE,  # Disable forecasting to reduce processing time
+      spatial_analysis = FALSE     # Disable spatial to reduce processing time
     )
-    
-    log_message("Generated stub traffic safety visualizations", 
+  }, error = function(e) {
+    log_message(paste("Error fetching enhanced traffic safety data:", e$message), 
+                level = "ERROR", show_console = TRUE)
+    NULL
+  })
+  
+  # Add to extended data sources if successful
+  if (!is.null(traffic_data) && nrow(traffic_data) > 0) {
+    extended_data_sources$traffic_safety <- traffic_data
+    log_message(paste("Added", nrow(traffic_data), "traffic safety records from enhanced module"), 
                 level = "INFO", show_console = TRUE)
+    
+    # Try to create visualizations if data is available
+    if (exists("create_traffic_safety_visualizations")) {
+      tryCatch({
+        log_message("Creating traffic safety visualizations...", level = "INFO", show_console = TRUE)
+        vis_files <- create_traffic_safety_visualizations(
+          traffic_data,
+          output_dir = file.path(output_dir, "visualizations/traffic_safety"),
+          create_maps = TRUE,
+          create_forecast_plots = FALSE,  # Skip forecast plots to save time
+          create_animation = FALSE        # Skip animations to save time
+        )
+        
+        log_message(paste("Created", length(vis_files), "traffic safety visualizations"), 
+                    level = "INFO", show_console = TRUE)
+      }, error = function(e) {
+        log_message(paste("Error creating traffic safety visualizations:", e$message), 
+                    level = "WARN", show_console = TRUE)
+      })
+    }
   }
 } else if (exists("fetch_traffic_safety_data")) {
-  # Use the standard stub version
-  log_message("Using basic stub implementation of fetch_traffic_safety_data", 
-            level = "INFO", show_console = TRUE)
-            
-  extended_data_sources$traffic_safety <- fetch_traffic_safety_data(
-    years = all_years,
-    cache_dir = extended_cache_dir,
-    refresh_cache = refresh_cache,
-    allow_simulation = allow_simulation,
-    allow_interpolation = allow_interpolation
+  # Fall back to basic implementation
+  log_message("Using basic traffic safety data pipeline", level = "INFO", show_console = TRUE)
+  extended_data_sources$traffic_safety <- safe_fetch_extended(
+    "Traffic safety and accident data", 
+    fetch_traffic_safety_data
   )
 } else {
-  log_message("No traffic safety data functions found. Skipping traffic safety data.", 
-            level = "WARN", show_console = TRUE)
+  log_message("No traffic safety data module available", level = "WARN", show_console = TRUE)
 }
 
 # Combine all data sources into a single list for processing

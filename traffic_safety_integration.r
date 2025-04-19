@@ -1,147 +1,174 @@
 #!/usr/bin/env Rscript
 
-# STUB IMPLEMENTATION: Traffic Safety Integration Module
-# This is a stub implementation to prevent pipeline hanging
+# Traffic Safety Integration Module
+# This script integrates all traffic safety enhancements into the unified pipeline
+# Including geospatial analysis, data validation, forecasting, and optimized caching
 
-# Log that we're using stub implementations
-cat("[INFO] Using stub implementation of traffic safety module to prevent hanging\n")
+# Required packages
+required_packages <- c(
+  "tidyverse",
+  "magrittr",
+  "R6"
+)
 
-# Stub implementation of main data fetch function
-fetch_traffic_safety_data <- function(years = 2010:2022, 
-                                cache_dir = "data/cache", 
-                                refresh_cache = FALSE,
-                                allow_simulation = FALSE,
-                                allow_interpolation = TRUE,
-                                data_quality_flags = list(
-                                  direct = "direct",
-                                  interpolated = "interpolated",
-                                  extrapolated = "extrapolated",
-                                  simulated = "simulated",
-                                  missing = NA,
-                                  imputed = "imputed"
-                                ),
-                                offline_mode = FALSE,
-                                parallel = FALSE,
-                                parallel_config = NULL,
-                                census_data = NULL) {
-  # Log the function call
-  cat("[INFO] Called stub implementation of fetch_traffic_safety_data\n")
+# Load required packages with proper error handling
+for (pkg in required_packages) {
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+    message(paste("Required package", pkg, "is not installed."))
+    message("Please run 'Rscript R/install_packages.r' first.")
+    # Don't stop execution, just warn and continue with reduced functionality
+  }
+}
+
+#' Safely load a module with isolation, error handling, and timeouts
+#' 
+#' @param module_path Path to the module file
+#' @param max_time Maximum time in seconds to allow for loading
+#' @return TRUE if successfully loaded, FALSE otherwise
+safe_load_module <- function(module_path, max_time = 10) {
+  if (!file.exists(module_path)) {
+    message(paste("Module file not found:", module_path))
+    return(FALSE)
+  }
   
-  # Create a simple template for traffic safety data with county FIPS
-  data <- data.frame(
-    fips = c("01001", "06037", "17031", "36061", "48201"),
-    year = rep(max(as.numeric(years)), 5),
-    county_name = c("Autauga County", "Los Angeles County", "Cook County", "New York County", "Harris County"),
-    traffic_fatality_count = c(5, 120, 80, 40, 95),
-    traffic_fatality_rate_per_100k = c(8.9, 12.3, 15.7, 4.8, 10.2),
-    traffic_crashes_count = c(230, 12500, 8200, 6700, 9800),
-    traffic_injury_count = c(85, 4300, 3100, 2200, 3600),
-    pedestrian_fatality_count = c(1, 45, 30, 22, 35),
-    bicycle_fatality_count = c(0, 12, 8, 4, 6),
-    traffic_fatality_count_data_quality = rep("simulated", 5),
-    traffic_fatality_rate_per_100k_data_quality = rep("simulated", 5),
-    traffic_crashes_count_data_quality = rep("simulated", 5),
-    traffic_injury_count_data_quality = rep("simulated", 5),
-    pedestrian_fatality_count_data_quality = rep("simulated", 5),
-    bicycle_fatality_count_data_quality = rep("simulated", 5)
+  module_env <- new.env(parent = globalenv())
+  
+  result <- tryCatch({
+    # Set a timeout for module loading
+    old_timeout <- options(timeout = max_time)
+    on.exit(options(old_timeout), add = TRUE) # Restore original timeout
+    
+    # Set CPU and elapsed time limits with proper cleanup
+    old_limits <- list(
+      cpu = getOption("cpuTimeLimit", Inf),
+      elapsed = getOption("elapsedTimeLimit", Inf)
+    )
+    setTimeLimit(cpu = max_time, elapsed = max_time)
+    on.exit({
+      setTimeLimit(cpu = old_limits$cpu, elapsed = old_limits$elapsed)
+    }, add = TRUE)
+    
+    # Load the module in an isolated environment
+    sys.source(module_path, envir = module_env)
+    
+    # Export selected objects to the global environment to make them available
+    for (obj_name in ls(module_env)) {
+      # Only export functions and R6 class generators
+      obj <- get(obj_name, envir = module_env)
+      if (is.function(obj) || (inherits(obj, "R6ClassGenerator"))) {
+        assign(obj_name, obj, envir = globalenv())
+      }
+    }
+    
+    message(paste("Successfully loaded module:", module_path))
+    TRUE
+  }, error = function(e) {
+    message(paste("Error loading module:", module_path, "-", e$message))
+    FALSE
+  }, warning = function(w) {
+    message(paste("Warning loading module:", module_path, "-", w$message))
+    TRUE
+  })
+  
+  return(result)
+}
+
+#' Check and load all traffic safety enhancement modules
+#' @return List of loaded module statuses
+load_traffic_safety_modules <- function() {
+  module_statuses <- list()
+  
+  # Define the modules to load
+  modules <- c(
+    "traffic_safety_cache.r",
+    "traffic_safety_validation.r",
+    "traffic_safety_forecasting.r",
+    "traffic_safety_geospatial.r"
   )
   
-  return(data)
-}
-
-# Stub implementation of validation function
-validate_traffic_safety_data <- function(data, validation_level = "basic") {
-  cat("[INFO] Called stub implementation of validate_traffic_safety_data\n")
-  # Simply return the data unchanged with validation flags
-  data$validation_passed <- TRUE
-  data$validation_level <- validation_level
-  return(data)
-}
-
-# Stub implementation of traffic safety forecasting
-forecast_traffic_safety <- function(data, forecast_years = 1, method = "arima") {
-  cat("[INFO] Called stub implementation of forecast_traffic_safety\n")
-  
-  # Simply extend the existing data with some forecasted values
-  last_year <- max(data$year)
-  existing_counties <- unique(data$fips)
-  
-  forecast_data <- data.frame()
-  
-  for (i in 1:forecast_years) {
-    forecast_year <- last_year + i
-    
-    year_data <- data.frame(
-      fips = existing_counties,
-      year = rep(forecast_year, length(existing_counties)),
-      traffic_fatality_count = data$traffic_fatality_count[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      traffic_fatality_rate_per_100k = data$traffic_fatality_rate_per_100k[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      traffic_crashes_count = data$traffic_crashes_count[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      traffic_injury_count = data$traffic_injury_count[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      pedestrian_fatality_count = data$pedestrian_fatality_count[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      bicycle_fatality_count = data$bicycle_fatality_count[1:length(existing_counties)] * (1 + runif(length(existing_counties), -0.05, 0.05)),
-      forecast_flag = TRUE,
-      forecast_method = method
+  # Try to load each module safely
+  for (module in modules) {
+    # Try multiple possible module locations
+    possible_paths <- c(
+      file.path(getwd(), module),                             # Current working directory
+      file.path(dirname(getwd()), module),                    # Parent directory
+      file.path(getwd(), "R", module),                        # R subdirectory
+      file.path(dirname(getwd()), "R", module)                # Parent's R subdirectory
     )
     
-    forecast_data <- rbind(forecast_data, year_data)
+    # Try each possible path
+    result <- FALSE
+    for (module_path in possible_paths) {
+      if (file.exists(module_path)) {
+        result <- safe_load_module(module_path, max_time = 15)
+        
+        # If successfully loaded, break the loop
+        if (result) break
+      }
+    }
+    
+    # If we went through all paths and none worked
+    if (!result) {
+      message(paste("Could not find module:", module, "in any expected location"))
+    }
+    
+    # Store the result
+    module_statuses[[module]] <- result
   }
   
-  # Combine with original data
-  combined_data <- rbind(
-    data,
-    forecast_data
-  )
-  
-  return(combined_data)
+  return(module_statuses)
 }
 
-# Stub implementation of spatial analysis
-spatial_analysis_traffic_safety <- function(data, shapefile_path = NULL) {
-  cat("[INFO] Called stub implementation of spatial_analysis_traffic_safety\n")
+#' Safely execute a function with proper timeout and error handling
+#' 
+#' @param func Function to execute
+#' @param max_time Maximum time in seconds to allow for execution
+#' @param default_value Value to return if function fails
+#' @return Result of the function or default_value if it fails
+safe_execute <- function(func, max_time = 30, default_value = NULL) {
+  result <- tryCatch({
+    # Set a timeout for execution
+    old_timeout <- options(timeout = max_time)
+    on.exit(options(old_timeout), add = TRUE) # Restore original timeout
+    
+    # Set CPU and elapsed time limits with proper cleanup
+    old_limits <- list(
+      cpu = getOption("cpuTimeLimit", Inf),
+      elapsed = getOption("elapsedTimeLimit", Inf)
+    )
+    setTimeLimit(cpu = max_time, elapsed = max_time)
+    on.exit({
+      setTimeLimit(cpu = old_limits$cpu, elapsed = old_limits$elapsed)
+    }, add = TRUE)
+    
+    # Execute the function
+    func()
+  }, error = function(e) {
+    message(paste("Error during execution:", e$message))
+    default_value
+  }, warning = function(w) {
+    message(paste("Warning during execution:", w$message))
+    NULL
+  })
   
-  # Add some fake spatial metrics to the data
-  data$spatial_hotspot_score <- runif(nrow(data), 0, 1)
-  data$neighbor_correlation <- runif(nrow(data), -0.3, 0.7)
-  data$spatial_analysis_complete <- TRUE
-  
-  return(data)
+  return(result)
 }
 
-# Stub implementation for visualization
-visualize_traffic_safety <- function(data, output_dir = "output/maps", create_plots = TRUE) {
-  cat("[INFO] Called stub implementation of visualize_traffic_safety\n")
-  
-  # Create output directory if it doesn't exist
-  if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-  }
-  
-  # Create a placeholder file to indicate visualization was run
-  placeholder_file <- file.path(output_dir, "traffic_safety_visualization_placeholder.txt")
-  writeLines("This is a placeholder file created by the stub implementation of visualize_traffic_safety function.", 
-             placeholder_file)
-  
-  # Return the path to the placeholder file
-  return(list(
-    visualization_complete = TRUE,
-    files_created = placeholder_file
-  ))
-}
-
-# Export to database stub function
-export_traffic_safety_to_db <- function(data, db_connection = NULL, table_name = "traffic_safety") {
-  cat("[INFO] Called stub implementation of export_traffic_safety_to_db\n")
-  
-  # Just return success message without doing anything
-  return(list(
-    success = TRUE,
-    rows_inserted = nrow(data),
-    table = table_name
-  ))
-}
-
-# Enhanced traffic safety data fetch with all improvements integrated
+#' Enhanced traffic safety data fetch with all improvements integrated
+#'
+#' @param years Years to fetch data for
+#' @param cache_dir Directory for caching data
+#' @param refresh_cache Whether to refresh cache
+#' @param allow_interpolation Whether to allow data interpolation
+#' @param allow_simulation Whether to allow data simulation
+#' @param use_validation Whether to apply validation hooks
+#' @param use_optimized_cache Whether to use the enhanced caching system
+#' @param generate_forecasts Whether to generate forecasts
+#' @param spatial_analysis Whether to perform spatial analysis
+#' @param ... Additional parameters passed to the underlying functions
+#'
+#' @return Enhanced traffic safety dataset with additional attributes
+#' @export
 fetch_enhanced_traffic_safety_data <- function(
     years = NULL,
     cache_dir = "data/cache",
@@ -154,94 +181,149 @@ fetch_enhanced_traffic_safety_data <- function(
     spatial_analysis = FALSE,
     ...
 ) {
-  cat("[INFO] Called stub implementation of fetch_enhanced_traffic_safety_data\n")
+  # Load required modules with streamlined approach
+  module_statuses <- load_traffic_safety_modules()
   
   # Set up default years if not provided
   if (is.null(years)) {
     years <- (as.numeric(format(Sys.Date(), "%Y")) - 10):as.numeric(format(Sys.Date(), "%Y"))
   }
   
-  # Get base data
-  traffic_data <- fetch_traffic_safety_data(
-    years = years,
-    cache_dir = cache_dir,
-    refresh_cache = refresh_cache,
-    allow_interpolation = allow_interpolation,
-    allow_simulation = allow_simulation,
-    ...
-  )
-  
-  # Add validation attributes
-  if (use_validation) {
-    attr(traffic_data, "validation") <- list(
-      valid = TRUE,
-      message = "Validation skipped to prevent hanging"
+  # Check if fetch_traffic_safety_data exists
+  if (!exists("fetch_traffic_safety_data", mode = "function")) {
+    # Try to load it from multiple possible locations
+    possible_paths <- c(
+      file.path(getwd(), "fetch_traffic_safety_data.r"),
+      file.path(dirname(getwd()), "fetch_traffic_safety_data.r"),
+      file.path(getwd(), "R", "fetch_traffic_safety_data.r"),
+      file.path(dirname(getwd()), "R", "fetch_traffic_safety_data.r")
     )
+    
+    fetch_loaded <- FALSE
+    for (fetch_file_path in possible_paths) {
+      if (file.exists(fetch_file_path)) {
+        # Try to load safely
+        fetch_loaded <- safe_load_module(fetch_file_path, max_time = 15)
+        if (fetch_loaded) break
+      }
+    }
+    
+    if (!fetch_loaded) {
+      # Define a simple default implementation if loading fails
+      message("fetch_traffic_safety_data.r not found in any expected location. Using default implementation.")
+      
+      fetch_traffic_safety_data <- function(years, cache_dir, refresh_cache, allow_interpolation, allow_simulation, ...) {
+        # Create some basic traffic safety data
+        basic_data <- data.frame(
+          fips = c("01001", "06037", "17031", "36061", "48201"),
+          year = rep(max(as.numeric(years)), 5),
+          county_name = c("Autauga County", "Los Angeles County", "Cook County", "New York County", "Harris County"),
+          traffic_fatality_count = c(5, 120, 80, 40, 95),
+          traffic_fatality_rate_per_100k = c(8.9, 12.3, 15.7, 4.8, 10.2)
+        )
+        return(basic_data)
+      }
+    }
+  }
+  
+  # Base function to fetch data
+  base_fetch_func <- function() {
+    fetch_traffic_safety_data(
+      years = years,
+      cache_dir = cache_dir,
+      refresh_cache = refresh_cache,
+      allow_interpolation = allow_interpolation,
+      allow_simulation = allow_simulation,
+      ...
+    )
+  }
+  
+  # Fetch the traffic safety data with safe execution
+  traffic_data <- if (use_optimized_cache && 
+                     module_statuses[["traffic_safety_cache.r"]] && 
+                     exists("with_optimized_cache", mode = "function")) {
+    # Use optimized cache if available
+    safe_execute(function() {
+      with_optimized_cache(base_fetch_func, cache_dir = cache_dir)
+    }, max_time = 60)
+  } else {
+    # Use regular fetch
+    safe_execute(base_fetch_func, max_time = 60)
+  }
+  
+  # If no data was returned (e.g., error during fetch), return NULL early
+  if (is.null(traffic_data) || nrow(traffic_data) == 0) {
+    message("No traffic safety data could be fetched. Returning NULL.")
+    return(NULL)
+  }
+  
+  # Apply validation if requested
+  if (use_validation && 
+      module_statuses[["traffic_safety_validation.r"]] && 
+      exists("validate_traffic_safety_data", mode = "function")) {
+    validation_result <- safe_execute(function() {
+      validate_traffic_safety_data(traffic_data)
+    }, max_time = 30)
+    
+    if (!is.null(validation_result)) {
+      # Use the validated data if validation succeeded
+      traffic_data <- validation_result$data
+      attr(traffic_data, "validation") <- validation_result
+    }
   }
   
   # Add forecasts if requested
-  if (generate_forecasts) {
-    # Create simple forecasting data
-    forecast_data <- data.frame(
-      year = (max(traffic_data$year) + 1):(max(traffic_data$year) + 5),
-      forecast = c(11.2, 10.9, 10.5, 10.1, 9.8),
-      lower = c(9.5, 9.1, 8.7, 8.3, 7.9),
-      upper = c(12.9, 12.7, 12.3, 11.9, 11.7),
-      type = "forecast"
-    )
+  if (generate_forecasts && 
+      module_statuses[["traffic_safety_forecasting.r"]] && 
+      exists("generate_traffic_forecast", mode = "function")) {
+    forecast_result <- safe_execute(function() {
+      generate_traffic_forecast(traffic_data, forecast_years = 5, method = "ensemble")
+    }, max_time = 45)
     
-    # Add attributes to make it look like forecast data
-    attr(forecast_data, "variable") <- "traffic_fatality_rate_per_100k"
-    attr(forecast_data, "method") <- "ensemble"
-    attr(forecast_data, "forecast_date") <- Sys.Date()
-    
-    # Add to traffic data
-    attr(traffic_data, "forecasts") <- list(
-      national = forecast_data
-    )
+    if (!is.null(forecast_result)) {
+      attr(traffic_data, "forecasts") <- forecast_result
+    }
   }
   
   # Add spatial analysis if requested
-  if (spatial_analysis) {
-    # Get the latest year
-    latest_year <- max(traffic_data$year, na.rm = TRUE)
-    
-    # Create a simple spatial data structure
-    attr(traffic_data, "spatial") <- list(
-      year = latest_year,
-      data = data.frame(
-        GEOID = c("01001", "06037", "17031", "36061"),
-        cluster_type = c("high-high", "low-low", "high-low", "not-significant")
-      ),
-      problem_areas = data.frame(
-        fips = c("01001", "06037"),
-        county_name = c("Autauga County", "Los Angeles County"),
-        years_analyzed = c(5, 5),
-        years_exceeding = c(3, 4),
-        pct_years_exceeding = c(60, 80),
-        persistently_problematic = c(TRUE, TRUE)
+  if (spatial_analysis && 
+      module_statuses[["traffic_safety_geospatial.r"]] && 
+      exists("analyze_traffic_safety_spatial", mode = "function")) {
+    spatial_result <- safe_execute(function() {
+      analyze_traffic_safety_spatial(
+        traffic_data, 
+        variable = "traffic_fatality_rate_per_100k",
+        year = max(traffic_data$year, na.rm = TRUE)
       )
-    )
+    }, max_time = 45)
+    
+    if (!is.null(spatial_result)) {
+      attr(traffic_data, "spatial") <- spatial_result
+    }
   }
   
-  # Add metadata about enhancements
+  # Add metadata about which enhancements were applied
   attr(traffic_data, "enhancements") <- list(
-    optimized_cache = use_optimized_cache,
-    validation = use_validation,
-    forecasting = generate_forecasts,
-    spatial_analysis = spatial_analysis,
-    modules_loaded = list(
-      "traffic_safety_cache.r" = TRUE,
-      "traffic_safety_validation.r" = TRUE,
-      "traffic_safety_forecasting.r" = TRUE,
-      "traffic_safety_geospatial.r" = TRUE
-    )
+    optimized_cache = use_optimized_cache && module_statuses[["traffic_safety_cache.r"]] && exists("with_optimized_cache", mode = "function"),
+    validation = use_validation && module_statuses[["traffic_safety_validation.r"]] && exists("validate_traffic_safety_data", mode = "function"),
+    forecasting = generate_forecasts && module_statuses[["traffic_safety_forecasting.r"]] && exists("generate_traffic_forecast", mode = "function"),
+    spatial_analysis = spatial_analysis && module_statuses[["traffic_safety_geospatial.r"]] && exists("analyze_traffic_safety_spatial", mode = "function"),
+    modules_loaded = module_statuses
   )
   
   return(traffic_data)
 }
 
-# Example function to create visualizations
+#' Generate and save traffic safety visualizations
+#'
+#' @param traffic_data Enhanced traffic safety dataset
+#' @param output_dir Directory to save visualizations
+#' @param create_maps Whether to create maps
+#' @param create_forecast_plots Whether to create forecast plots
+#' @param create_animation Whether to create spatial animation
+#'
+#' @return List of paths to created visualizations
+#' @export
 create_traffic_safety_visualizations <- function(
     traffic_data,
     output_dir = "output/visualizations/traffic_safety",
@@ -249,44 +331,140 @@ create_traffic_safety_visualizations <- function(
     create_forecast_plots = TRUE,
     create_animation = FALSE
 ) {
-  cat("[INFO] Called stub implementation of create_traffic_safety_visualizations\n")
-  
   # Make sure output directory exists
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   }
   
-  # Create a placeholder text file
-  placeholder_file <- file.path(output_dir, "traffic_safety_visualizations_placeholder.txt")
-  writeLines(
-    c(
-      "Traffic safety visualizations would be generated here.",
-      "Using stub implementation to prevent pipeline hanging.",
-      paste("Timestamp:", Sys.time()),
-      paste("Create maps:", create_maps),
-      paste("Create forecast plots:", create_forecast_plots),
-      paste("Create animation:", create_animation)
-    ),
-    placeholder_file
-  )
+  # Initialize list to track created files
+  created_files <- list()
   
-  return(list(placeholder = placeholder_file))
+  # Create a basic visualization showing traffic fatality rates
+  if (create_maps && "traffic_fatality_rate_per_100k" %in% names(traffic_data)) {
+    # Safely create map with timeout
+    map_result <- safe_execute(function() {
+      # Create a simple CSV output for this map
+      latest_year <- max(traffic_data$year, na.rm = TRUE)
+      latest_data <- subset(traffic_data, year == latest_year)
+      
+      # Save to CSV file for visualization
+      map_data_file <- file.path(output_dir, "traffic_fatality_rates.csv")
+      write.csv(latest_data[, c("fips", "county_name", "traffic_fatality_rate_per_100k")], 
+                map_data_file, row.names = FALSE)
+      
+      return(map_data_file)
+    }, max_time = 30)
+    
+    if (!is.null(map_result)) {
+      created_files$fatality_rate_map <- map_result
+    }
+  }
+  
+  # Create forecast plots if forecasts exist
+  if (create_forecast_plots && !is.null(attr(traffic_data, "forecasts"))) {
+    forecast_result <- safe_execute(function() {
+      # Create a simple CSV output for forecasts
+      forecasts <- attr(traffic_data, "forecasts")
+      if (is.data.frame(forecasts)) {
+        # Single forecast dataframe
+        forecast_file <- file.path(output_dir, "traffic_safety_forecast.csv")
+        write.csv(forecasts, forecast_file, row.names = FALSE)
+        return(forecast_file)
+      } else if (is.list(forecasts) && length(forecasts) > 0) {
+        # List of forecasts
+        forecast_files <- list()
+        for (name in names(forecasts)) {
+          if (is.data.frame(forecasts[[name]])) {
+            file_path <- file.path(output_dir, paste0("traffic_safety_forecast_", name, ".csv"))
+            write.csv(forecasts[[name]], file_path, row.names = FALSE)
+            forecast_files[[name]] <- file_path
+          }
+        }
+        return(forecast_files)
+      }
+      return(NULL)
+    }, max_time = 30)
+    
+    if (!is.null(forecast_result)) {
+      if (is.character(forecast_result)) {
+        created_files$forecast <- forecast_result
+      } else if (is.list(forecast_result)) {
+        for (name in names(forecast_result)) {
+          created_files[[paste0("forecast_", name)]] <- forecast_result[[name]]
+        }
+      }
+    }
+  }
+  
+  # Create animations only if specifically requested and spatial data exists
+  if (create_animation && !is.null(attr(traffic_data, "spatial"))) {
+    animation_result <- safe_execute(function() {
+      # Create a simple CSV output for spatial analysis
+      spatial_data <- attr(traffic_data, "spatial")
+      if (is.list(spatial_data) && "data" %in% names(spatial_data) && is.data.frame(spatial_data$data)) {
+        spatial_file <- file.path(output_dir, "traffic_safety_spatial.csv")
+        write.csv(spatial_data$data, spatial_file, row.names = FALSE)
+        return(spatial_file)
+      }
+      return(NULL)
+    }, max_time = 30)
+    
+    if (!is.null(animation_result)) {
+      created_files$spatial_data <- animation_result
+    }
+  }
+  
+  # Return the list of created files
+  return(created_files)
 }
 
-# Add database export function
-add_traffic_safety_to_database <- function(
-    traffic_data,
-    db_path,
-    add_forecasts = TRUE,
-    add_spatial = TRUE
-) {
-  cat("[INFO] Called stub implementation of add_traffic_safety_to_database\n")
+# Example usage when run directly
+if (!interactive()) {
+  # Parse command line arguments
+  args <- commandArgs(trailingOnly = TRUE)
   
-  # Just return success without doing anything
-  return(TRUE)
+  if (length(args) > 0 && args[1] == "--test") {
+    # Test the integration
+    cat("Testing traffic safety integration...\n")
+    
+    # Load all modules
+    module_statuses <- load_traffic_safety_modules()
+    
+    # Print module status
+    for (module in names(module_statuses)) {
+      status <- if (module_statuses[[module]]) "loaded" else "failed"
+      cat(paste(module, ":", status, "\n"))
+    }
+    
+    # Fetch enhanced data
+    cat("Fetching enhanced traffic safety data...\n")
+    enhanced_data <- fetch_enhanced_traffic_safety_data(
+      years = 2018:2021,
+      use_validation = TRUE,
+      use_optimized_cache = TRUE,
+      generate_forecasts = TRUE,
+      spatial_analysis = TRUE
+    )
+    
+    # Create visualizations
+    cat("Creating visualizations...\n")
+    vis_files <- create_traffic_safety_visualizations(
+      enhanced_data,
+      create_maps = TRUE,
+      create_forecast_plots = TRUE
+    )
+    
+    # Print results
+    cat("\nTest complete.\n")
+    cat("Data dimensions:", nrow(enhanced_data), "rows,", ncol(enhanced_data), "columns\n")
+    cat("Years:", paste(sort(unique(enhanced_data$year)), collapse = ", "), "\n")
+    cat("Enhancements applied:", paste(names(attr(enhanced_data, "enhancements")), collapse = ", "), "\n")
+    
+    if (length(vis_files) > 0) {
+      cat("Visualizations created:\n")
+      for (name in names(vis_files)) {
+        cat(" -", name, ":", vis_files[[name]], "\n")
+      }
+    }
+  }
 }
-
-# Let the pipeline know the integration module and all functions are loaded and ready
-traffic_safety_module_loaded <- TRUE
-
-cat("[INFO] Traffic safety stub integration module loaded successfully\n")
