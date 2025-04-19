@@ -157,11 +157,11 @@ fetch_traffic_safety_data <- function(years,
     # Get counties from tigris for the most recent census
     counties <- tigris::counties(cb = TRUE, year = max(min(c(2020, current_year)), min(years)))
     
-    # Extract required fields
+    # Extract required fields and keep GEOID as is (don't rename to fips)
     counties %>%
       sf::st_drop_geometry() %>%
       select(GEOID, NAME) %>%
-      rename(fips = GEOID, county_name = NAME)
+      rename(county_name = NAME)  # Keep GEOID as GEOID
   }, error = function(e) {
     warning(paste("Error fetching county data from tigris:", e$message))
     # Return NULL if we couldn't get counties
@@ -170,31 +170,40 @@ fetch_traffic_safety_data <- function(years,
   
   # If tigris failed, try to create a basic county list from FARS data
   if (is.null(county_template) && !is.null(fars_data)) {
-    county_template <- fars_data %>%
-      select(fips) %>%
-      distinct() %>%
-      mutate(county_name = NA_character_)
+    # Check if we need to rename fips to GEOID
+    if ("fips" %in% names(fars_data) && !"GEOID" %in% names(fars_data)) {
+      county_template <- fars_data %>%
+        select(fips) %>%
+        rename(GEOID = fips) %>%
+        distinct() %>%
+        mutate(county_name = NA_character_)
+    } else {
+      county_template <- fars_data %>%
+        select(GEOID) %>%
+        distinct() %>%
+        mutate(county_name = NA_character_)
+    }
   }
   
   # If we still don't have counties, use a minimal template
   if (is.null(county_template)) {
     # Create an empty template - will be populated as we process data
     county_template <- data.frame(
-      fips = character(0),
+      GEOID = character(0),
       county_name = character(0)
     )
   }
   
   # Create a data frame with all counties and years
   all_counties_years <- tidyr::expand_grid(
-    fips = unique(county_template$fips),
+    GEOID = unique(county_template$GEOID),
     year = years
   )
   
   # Add county names if available
   if (nrow(county_template) > 0) {
     all_counties_years <- all_counties_years %>%
-      left_join(county_template, by = "fips")
+      left_join(county_template, by = "GEOID")
   } else {
     all_counties_years$county_name <- NA_character_
   }
@@ -398,9 +407,13 @@ fetch_traffic_safety_data <- function(years,
     
     # Ensure fips and year columns exist
     if (all(c("fips", "year") %in% names(fars_data))) {
+      # Rename fips to GEOID for consistency
+      fars_data <- fars_data %>%
+        rename(GEOID = fips)
+      
       # Prepare FARS variables for merging
       fars_for_merge <- fars_data %>%
-        select(fips, year, 
+        select(GEOID, year, 
                matches("traffic_fatality|ped_bike|dui|speeding")) %>%
         # Fill _data_quality columns if they don't exist
         mutate(across(matches("traffic_fatality|ped_bike|dui|speeding"), 
@@ -411,7 +424,7 @@ fetch_traffic_safety_data <- function(years,
       
       # Merge with combined_data
       combined_data <- combined_data %>%
-        left_join(fars_for_merge, by = c("fips", "year"), suffix = c("", "_fars"))
+        left_join(fars_for_merge, by = c("GEOID", "year"), suffix = c("", "_fars"))
       
       # For each variable from FARS, update the corresponding variable in combined_data
       # giving preference to FARS data when available
@@ -461,13 +474,17 @@ fetch_traffic_safety_data <- function(years,
     
     # Ensure fips and year columns exist
     if (all(c("fips", "year") %in% names(cdc_data))) {
+      # Rename fips to GEOID for consistency
+      cdc_data <- cdc_data %>%
+        rename(GEOID = fips)
+      
       # Only use CDC data for variables not already populated from FARS
       # CDC generally provides mortality data, but may not have specific 
       # breakdowns like FARS does
       
       # Prepare CDC variables for merging
       cdc_for_merge <- cdc_data %>%
-        select(fips, year, 
+        select(GEOID, year, 
                matches("traffic|transport")) %>%
         # Fill _data_quality columns if they don't exist
         mutate(across(matches("traffic|transport"), 
@@ -478,7 +495,7 @@ fetch_traffic_safety_data <- function(years,
       
       # Merge with combined_data
       combined_data <- combined_data %>%
-        left_join(cdc_for_merge, by = c("fips", "year"), suffix = c("", "_cdc"))
+        left_join(cdc_for_merge, by = c("GEOID", "year"), suffix = c("", "_cdc"))
       
       # For variables that might overlap with FARS but are missing in combined_data,
       # use the CDC data
@@ -535,9 +552,9 @@ fetch_traffic_safety_data <- function(years,
     }
   }
   
-  # Standardize FIPS codes to ensure proper formatting
+  # Standardize GEOID codes to ensure proper formatting
   combined_data <- combined_data %>%
-    mutate(fips = sprintf("%05d", as.numeric(fips)))
+    mutate(GEOID = sprintf("%05d", as.numeric(GEOID)))
   
   # Interpolate missing years if allowed
   if (allow_interpolation) {
@@ -552,7 +569,7 @@ fetch_traffic_safety_data <- function(years,
     
     # Interpolate each variable for each county
     combined_data <- combined_data %>%
-      group_by(fips) %>%
+      group_by(GEOID) %>%
       mutate(across(all_of(vars_to_interpolate), 
                    ~if(any(!is.na(.))) {
                      zoo::na.approx(.x, na.rm = FALSE)
@@ -578,14 +595,15 @@ fetch_traffic_safety_data <- function(years,
   if (!is.null(population_data) && nrow(population_data) > 0) {
     message("Calculating rates using population data...")
     
-    # Ensure population data has standardized FIPS codes
+    # Ensure population data has standardized FIPS codes and rename to GEOID
     population_data <- population_data %>%
-      mutate(fips = sprintf("%05d", as.numeric(fips)))
+      mutate(fips = sprintf("%05d", as.numeric(fips))) %>%
+      rename(GEOID = fips)
     
     # Join with population data (keeping only required columns)
     combined_data <- combined_data %>%
-      left_join(population_data %>% select(fips, year, population), 
-               by = c("fips", "year"))
+      left_join(population_data %>% select(GEOID, year, population), 
+               by = c("GEOID", "year"))
     
     # Calculate rates using actual population
     combined_data <- combined_data %>%
@@ -672,7 +690,9 @@ fetch_traffic_safety_data <- function(years,
       # Make sure all data quality flags are filled
       across(ends_with("_data_quality"), 
             ~ifelse(is.na(.x), missing_flag, .x))
-    )
+    ) %>%
+    # Use GEOID consistently instead of fips to fix column naming inconsistency with process_extended_data_v2
+    rename_with(~gsub("^fips$", "GEOID", .), everything())
   
   # Save the combined dataset to cache
   message("Saving combined traffic safety data to cache...")
@@ -919,29 +939,35 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   fars_data <- fars_data %>%
     rename_with(~tolower(gsub(" ", "_", .x)))
   
-  # Ensure we have a fips column
-  if (!"fips" %in% names(fars_data)) {
-    # Try to create fips from state and county codes
-    if (all(c("state", "county") %in% names(fars_data))) {
+  # Ensure we have a GEOID column (renamed from fips for consistency)
+  if (!"GEOID" %in% names(fars_data)) {
+    if ("fips" %in% names(fars_data)) {
+      # If fips exists, rename it to GEOID
+      fars_data <- fars_data %>%
+        rename(GEOID = fips)
+    } else if ("geoid" %in% names(fars_data)) {
+      # If geoid exists, rename it to GEOID (standardize case)
+      fars_data <- fars_data %>%
+        rename(GEOID = geoid)
+    } else if ("county_fips" %in% names(fars_data)) {
+      # If county_fips exists, rename it to GEOID
+      fars_data <- fars_data %>%
+        rename(GEOID = county_fips)
+    } else if (all(c("state", "county") %in% names(fars_data))) {
+      # Create GEOID from state and county codes
       fars_data <- fars_data %>%
         mutate(
           state = sprintf("%02d", as.numeric(state)),
           county = sprintf("%03d", as.numeric(county)),
-          fips = paste0(state, county)
+          GEOID = paste0(state, county)
         )
-    } else if ("geoid" %in% names(fars_data)) {
-      fars_data <- fars_data %>%
-        rename(fips = geoid)
-    } else if ("county_fips" %in% names(fars_data)) {
-      fars_data <- fars_data %>%
-        rename(fips = county_fips)
     }
   }
   
   # Standardize data types
   fars_data <- fars_data %>%
     mutate(
-      fips = as.character(fips),
+      GEOID = as.character(GEOID),
       year = as.numeric(year),
       # Ensure all numeric columns are properly typed
       across(matches("count|rate|number|total"), ~as.numeric(as.character(.x)))
@@ -950,8 +976,8 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   # Filter to valid records
   fars_data <- fars_data %>%
     filter(year %in% years,
-           !is.na(fips),
-           nchar(fips) == 5)
+           !is.na(GEOID),
+           nchar(GEOID) == 5)
   
   # Save the processed data to cache
   saveRDS(fars_data, fars_cache_file)
@@ -1139,24 +1165,27 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     cdc_data <- cdc_data %>%
       rename_with(~tolower(gsub(" ", "_", .x)))
     
-    # Ensure we have a fips column
-    if (!"fips" %in% names(cdc_data)) {
-      # Check for alternative column names
-      if ("county_code" %in% names(cdc_data)) {
+    # Ensure we have a GEOID column (renamed from fips for consistency)
+    if (!"GEOID" %in% names(cdc_data)) {
+      if ("fips" %in% names(cdc_data)) {
+        # If fips exists, rename it to GEOID
         cdc_data <- cdc_data %>%
-          rename(fips = county_code)
+          rename(GEOID = fips)
+      } else if ("county_code" %in% names(cdc_data)) {
+        cdc_data <- cdc_data %>%
+          rename(GEOID = county_code)
       } else if ("county_fips" %in% names(cdc_data)) {
         cdc_data <- cdc_data %>%
-          rename(fips = county_fips)
+          rename(GEOID = county_fips)
       } else if ("geoid" %in% names(cdc_data)) {
         cdc_data <- cdc_data %>%
-          rename(fips = geoid)
+          rename(GEOID = geoid)
       } else if (all(c("state_code", "county_code") %in% names(cdc_data))) {
         cdc_data <- cdc_data %>%
           mutate(
             state_code = sprintf("%02d", as.numeric(state_code)),
             county_code = sprintf("%03d", as.numeric(county_code)),
-            fips = paste0(state_code, county_code)
+            GEOID = paste0(state_code, county_code)
           )
       }
     }
@@ -1164,7 +1193,7 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     # Standardize column data types
     cdc_data <- cdc_data %>%
       mutate(
-        fips = as.character(fips),
+        GEOID = as.character(GEOID),
         year = as.numeric(year),
         # Ensure all numeric columns are properly typed
         across(matches("count|rate|number|total|deaths"), 
@@ -1174,8 +1203,8 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     # Filter to valid records
     cdc_data <- cdc_data %>%
       filter(year %in% years,
-             !is.na(fips),
-             nchar(fips) == 5)
+             !is.na(GEOID),
+             nchar(GEOID) == 5)
     
     # Rename deaths column to transport_mortality_count if present
     if ("deaths" %in% names(cdc_data) && !"transport_mortality_count" %in% names(cdc_data)) {
