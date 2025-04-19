@@ -9,8 +9,8 @@ required_packages <- c(
   "tidyverse",
   "digest",
   "jsonlite",
-  "lubridate",
-  "R.utils"
+  "lubridate"
+  # Removed R.utils from auto-loading to avoid namespace conflicts
 )
 
 # Load required packages
@@ -19,6 +19,32 @@ for (pkg in required_packages) {
     message(paste("Required package", pkg, "is not installed."))
     message("Please run 'Rscript install_packages.r' first.")
     # Don't stop execution, just warn and continue with reduced functionality
+  }
+}
+
+# Check for R.utils without loading the namespace
+has_r_utils <- requireNamespace("R.utils", quietly = TRUE)
+if (!has_r_utils) {
+  message("R.utils package is not installed. Some caching features will be limited.")
+}
+
+# Define a custom gunzip function that works with or without R.utils
+safe_gunzip <- function(src, destname, remove = FALSE) {
+  if (has_r_utils) {
+    # Use the R.utils version but avoid loading the entire namespace
+    result <- R.utils::gunzip(src, destname = destname, remove = remove)
+    return(result)
+  } else {
+    # Fallback implementation using system commands
+    if (.Platform$OS.type == "windows") {
+      # Windows implementation
+      system2("powershell", c("-Command", paste0("Expand-Archive -Path '", src, "' -DestinationPath '", dirname(destname), "'")), stdout = FALSE)
+    } else {
+      # Unix/Mac implementation
+      system2("gunzip", c("-c", src, ">", destname))
+    }
+    if (remove) unlink(src)
+    return(destname)
   }
 }
 
@@ -210,16 +236,17 @@ TrafficSafetyCache <- R6::R6Class(
           if (file_info$size < 10 * 1024 * 1024) {  # Skip files > 10MB
             tryCatch({
               if (grepl("\\.gz$", file_path)) {
-                # For compressed files, first decompress if R.utils is available
-                if (requireNamespace("R.utils", quietly = TRUE)) {
-                  temp_file <- tempfile()
-                  R.utils::gunzip(file_path, destname = temp_file, remove = FALSE)
+                # For compressed files, first decompress using our safe function
+                temp_file <- tempfile()
+                tryCatch({
+                  safe_gunzip(file_path, destname = temp_file, remove = FALSE)
                   file_hash <- digest::digest(temp_file, algo = "md5")
-                  unlink(temp_file)
-                } else {
-                  # R.utils not available, use file path directly
+                }, error = function(e) {
+                  # If decompression fails, use file path directly
                   file_hash <- digest::digest(file_path, algo = "md5")
-                }
+                }, finally = {
+                  unlink(temp_file)
+                })
               } else {
                 file_hash <- digest::digest(file_path, algo = "md5")
               }
@@ -308,8 +335,14 @@ TrafficSafetyCache <- R6::R6Class(
       result <- tryCatch({
         # Check if file is compressed
         if (grepl("\\.gz$", file_path)) {
-          # Decompress and read
-          readRDS(gzfile(file_path))
+          # Decompress to a temporary file and read
+          temp_file <- tempfile()
+          tryCatch({
+            safe_gunzip(file_path, destname = temp_file, remove = FALSE)
+            readRDS(temp_file)
+          }, finally = {
+            unlink(temp_file)
+          })
         } else {
           # Regular RDS file
           readRDS(file_path)
@@ -357,8 +390,25 @@ TrafficSafetyCache <- R6::R6Class(
       # Try to save the data
       success <- tryCatch({
         if (compress) {
-          # Save compressed with gzfile connection
-          saveRDS(data, gzfile(file_path))
+          # Save to a temporary file first, then compress
+          temp_file <- tempfile()
+          saveRDS(data, temp_file)
+          
+          # Create the compressed file
+          if (has_r_utils) {
+            # Use R.utils::gzip without loading the namespace
+            R.utils::gzip(temp_file, destname = file_path, remove = FALSE)
+          } else {
+            # Fallback to system commands
+            if (.Platform$OS.type == "windows") {
+              system2("powershell", c("-Command", paste0("Compress-Archive -Path '", temp_file, "' -DestinationPath '", file_path, "'")), stdout = FALSE)
+            } else {
+              system2("gzip", c("-c", temp_file, ">", file_path))
+            }
+          }
+          
+          # Clean up temporary file
+          unlink(temp_file)
         } else {
           # Regular RDS save
           saveRDS(data, file_path)
