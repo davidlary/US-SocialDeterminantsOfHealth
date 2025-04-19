@@ -803,109 +803,79 @@ if (exists("fetch_digital_access_data")) {
   )
 }
 
-# Traffic safety data
-if (file.exists(file.path(root_dir, "traffic_safety_integration.r"))) {
-  # Source the traffic safety integration module with a timeout
+# Traffic safety data - STUB IMPLEMENTATION
+log_message("Using STUB implementation of traffic safety modules to prevent pipeline hanging", 
+          level = "INFO", show_console = TRUE)
+
+# Source the stub modules first with proper error handling
+traffic_module_files <- c(
+  "traffic_safety_integration.r",
+  "traffic_safety_validation.r",
+  "traffic_safety_cache.r",
+  "traffic_safety_forecasting.r",
+  "traffic_safety_geospatial.r"
+)
+
+# Create and source stub modules
+for (module_file in traffic_module_files) {
+  module_path <- file.path(root_dir, module_file)
   tryCatch({
-    # Set a global timeout for this operation
-    old_timeout <- options(timeout = 30)
-    on.exit(options(old_timeout), add = TRUE) # Restore original timeout
+    log_message(paste("Loading stub module:", module_file), level = "INFO", show_console = TRUE)
+    source(module_path)
+  }, error = function(e) {
+    log_message(paste("Error loading stub module", module_file, ":", e$message), 
+              level = "WARN", show_console = TRUE)
+  })
+}
+
+# Use the enhanced version but with stub implementations
+if (exists("fetch_enhanced_traffic_safety_data")) {
+  log_message("Using stub implementation of fetch_enhanced_traffic_safety_data", 
+            level = "INFO", show_console = TRUE)
+              
+  extended_data_sources$traffic_safety <- fetch_enhanced_traffic_safety_data(
+    years = all_years,
+    cache_dir = extended_cache_dir,
+    refresh_cache = refresh_cache,
+    allow_simulation = allow_simulation,
+    allow_interpolation = allow_interpolation,
+    use_validation = TRUE, 
+    use_optimized_cache = TRUE,
+    generate_forecasts = TRUE,
+    spatial_analysis = TRUE
+  )
+  
+  # Generate stub visualizations
+  if (!is.null(extended_data_sources$traffic_safety) && 
+      nrow(extended_data_sources$traffic_safety) > 0) {
+    log_message("Generating stub traffic safety visualizations...", level = "INFO", show_console = TRUE)
     
-    # Set CPU and elapsed time limits
-    setTimeLimit(cpu = 30, elapsed = 30)
-    on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE) # Restore time limits
-    
-    log_message("Loading traffic safety integration module...", level = "INFO", show_console = TRUE)
-    
-    # Source the integration file
-    source(file.path(root_dir, "traffic_safety_integration.r"))
-    
-    log_message("Using enhanced traffic safety module with geospatial, validation, forecasting and cache optimizations", 
-                level = "INFO", show_console = TRUE)
-    
-    # Reset time limits for the data fetching operation
-    setTimeLimit(cpu = Inf, elapsed = Inf)
-    
-    # Use the enhanced version with simplified parameters (minimal features enabled)
-    extended_data_sources$traffic_safety <- safe_fetch_extended(
-      "Enhanced traffic safety data", 
-      function(years, cache_dir, refresh_cache, allow_simulation, allow_interpolation, ...) {
-        # Set a 60 second timeout for data fetching
-        setTimeLimit(cpu = 60, elapsed = 60)
-        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
-        
-        # Call with minimal features enabled to prevent hanging
-        result <- fetch_enhanced_traffic_safety_data(
-          years = years,
-          cache_dir = cache_dir,
-          refresh_cache = refresh_cache,
-          allow_simulation = allow_simulation,
-          allow_interpolation = allow_interpolation,
-          use_validation = FALSE, # Disable validation to prevent hanging
-          use_optimized_cache = TRUE,
-          generate_forecasts = FALSE, # Disable forecasting to prevent hanging
-          spatial_analysis = FALSE # Disable spatial analysis to prevent hanging
-        )
-        
-        # Reset time limits
-        setTimeLimit(cpu = Inf, elapsed = Inf)
-        return(result)
-      }
+    vis_files <- create_traffic_safety_visualizations(
+      extended_data_sources$traffic_safety,
+      output_dir = file.path(output_dir, "visualizations/traffic_safety"),
+      create_maps = TRUE,
+      create_forecast_plots = TRUE,
+      create_animation = FALSE
     )
     
-    # Generate and save visualizations if we have data
-    if (!is.null(extended_data_sources$traffic_safety) && 
-        nrow(extended_data_sources$traffic_safety) > 0) {
-      tryCatch({
-        # Set a 30 second timeout for visualizations
-        setTimeLimit(cpu = 30, elapsed = 30)
-        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf), add = TRUE)
-        
-        log_message("Generating traffic safety visualizations...", level = "INFO", show_console = TRUE)
-        
-        vis_files <- create_traffic_safety_visualizations(
-          extended_data_sources$traffic_safety,
-          output_dir = file.path(output_dir, "visualizations/traffic_safety"),
-          create_maps = FALSE,  # Disable maps to prevent hanging
-          create_forecast_plots = FALSE, # Disable forecast plots to prevent hanging
-          create_animation = FALSE # Disable animations to prevent hanging
-        )
-        
-        # Reset time limits
-        setTimeLimit(cpu = Inf, elapsed = Inf)
-        
-        log_message(paste("Generated", length(vis_files), "traffic safety visualizations"), 
-                    level = "INFO", show_console = TRUE)
-      }, error = function(e) {
-        # Always reset time limits in case of error
-        setTimeLimit(cpu = Inf, elapsed = Inf)
-        log_message(paste("Error generating traffic safety visualizations:", e$message), 
-                    level = "ERROR", show_console = TRUE)
-      })
-    }
-  }, error = function(e) {
-    # Always reset time limits in case of error
-    setTimeLimit(cpu = Inf, elapsed = Inf)
-    log_message(paste("Error loading enhanced traffic safety module:", e$message), 
-                level = "WARN", show_console = TRUE)
-    
-    # Fall back to standard fetcher
-    if (exists("fetch_traffic_safety_data")) {
-      log_message("Falling back to standard traffic safety data fetcher", 
-                  level = "WARN", show_console = TRUE)
-                  
-      extended_data_sources$traffic_safety <- safe_fetch_extended(
-        "Traffic safety and accident data", 
-        fetch_traffic_safety_data
-      )
-    }
-  })
+    log_message("Generated stub traffic safety visualizations", 
+                level = "INFO", show_console = TRUE)
+  }
 } else if (exists("fetch_traffic_safety_data")) {
-  # Use the standard version
-  extended_data_sources$traffic_safety <- safe_fetch_extended(
-    "Traffic safety and accident data", 
-    fetch_traffic_safety_data
+  # Use the standard stub version
+  log_message("Using basic stub implementation of fetch_traffic_safety_data", 
+            level = "INFO", show_console = TRUE)
+            
+  extended_data_sources$traffic_safety <- fetch_traffic_safety_data(
+    years = all_years,
+    cache_dir = extended_cache_dir,
+    refresh_cache = refresh_cache,
+    allow_simulation = allow_simulation,
+    allow_interpolation = allow_interpolation
   )
+} else {
+  log_message("No traffic safety data functions found. Skipping traffic safety data.", 
+            level = "WARN", show_console = TRUE)
 }
 
 # Combine all data sources into a single list for processing
