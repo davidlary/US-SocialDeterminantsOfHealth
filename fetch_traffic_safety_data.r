@@ -75,6 +75,9 @@ fetch_traffic_safety_data <- function(years,
     dir.create(traffic_cache_dir, recursive = TRUE, showWarnings = FALSE)
   }
   
+  # Default value for missing list elements
+  `%||%` <- function(a, b) if (is.null(a)) b else a
+  
   # Define the data quality flags from parameter or defaults
   direct_flag <- data_quality_flags$direct %||% "direct"
   interpolated_flag <- data_quality_flags$interpolated %||% "interpolated"
@@ -82,9 +85,6 @@ fetch_traffic_safety_data <- function(years,
   simulated_flag <- data_quality_flags$simulated %||% "simulated"
   missing_flag <- data_quality_flags$missing %||% NA
   imputed_flag <- data_quality_flags$imputed %||% "imputed"
-  
-  # Default value for missing list elements
-  `%||%` <- function(a, b) if (is.null(a)) b else a
   
   # Check if years are valid
   current_year <- as.numeric(format(Sys.Date(), "%Y"))
