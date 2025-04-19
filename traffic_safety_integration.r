@@ -33,7 +33,7 @@ load_traffic_safety_modules <- function() {
     "traffic_safety_geospatial.r"
   )
   
-  # Try to load each module with proper error handling and timeout
+  # Try to load each module with proper error handling (no timeouts)
   for (module in modules) {
     # Try multiple possible module locations
     possible_paths <- c(
@@ -47,32 +47,34 @@ load_traffic_safety_modules <- function() {
     result <- FALSE
     for (module_path in possible_paths) {
       if (file.exists(module_path)) {
-        # Attempt to load the module with a timeout
+        # Attempt to load the module without timeout (timeout was causing hanging issues)
         result <- tryCatch({
-          # Set a timeout for module loading (5 seconds)
-          setTimeLimit(cpu = 5, elapsed = 5)
+          # Log loading attempt
+          message(paste("Loading module:", module, "from", module_path))
           
-          # Source the module
-          source(module_path)
+          # Create a special environment for sourcing to prevent namespace conflicts
+          temp_env <- new.env(parent = .GlobalEnv)
           
-          # Reset timeout
-          setTimeLimit(cpu = Inf, elapsed = Inf)
+          # Source the module in the special environment
+          sys.source(module_path, envir = temp_env)
+          
+          # Copy necessary objects from temp environment to global environment
+          for (obj_name in ls(temp_env)) {
+            if (!exists(obj_name, envir = .GlobalEnv)) {
+              assign(obj_name, get(obj_name, envir = temp_env), envir = .GlobalEnv)
+            }
+          }
           
           # Log success
           message(paste("Successfully loaded module:", module, "from", module_path))
           TRUE
         }, error = function(e) {
-          # Reset timeout in case of error
-          setTimeLimit(cpu = Inf, elapsed = Inf)
           message(paste("Failed to load module:", module, "from", module_path, "-", e$message))
           FALSE
         }, warning = function(w) {
           # Handle warnings but continue
           message(paste("Warning loading module:", module, "-", w$message))
           TRUE
-        }, finally = {
-          # Always reset timeout
-          setTimeLimit(cpu = Inf, elapsed = Inf)
         })
         
         # If successfully loaded, break the loop
@@ -140,19 +142,28 @@ fetch_enhanced_traffic_safety_data <- function(
     fetch_loaded <- FALSE
     for (fetch_file_path in possible_paths) {
       if (file.exists(fetch_file_path)) {
-        # Set a timeout to prevent hanging
+        # Load without timeout to prevent hanging
         tryCatch({
-          setTimeLimit(cpu = 5, elapsed = 5)
-          source(fetch_file_path)
-          setTimeLimit(cpu = Inf, elapsed = Inf)
+          message(paste("Loading fetch_traffic_safety_data from", fetch_file_path))
+          
+          # Create a special environment for sourcing to prevent namespace conflicts
+          temp_env <- new.env(parent = .GlobalEnv)
+          
+          # Source the file in the special environment
+          sys.source(fetch_file_path, envir = temp_env)
+          
+          # Copy necessary objects from temp environment to global environment
+          for (obj_name in ls(temp_env)) {
+            if (!exists(obj_name, envir = .GlobalEnv)) {
+              assign(obj_name, get(obj_name, envir = temp_env), envir = .GlobalEnv)
+            }
+          }
+          
           fetch_loaded <- TRUE
           message(paste("Successfully loaded fetch_traffic_safety_data from", fetch_file_path))
           break
         }, error = function(e) {
-          setTimeLimit(cpu = Inf, elapsed = Inf)
           message(paste("Error loading fetch_traffic_safety_data from", fetch_file_path, "-", e$message))
-        }, finally = {
-          setTimeLimit(cpu = Inf, elapsed = Inf)
         })
       }
     }
@@ -193,8 +204,9 @@ fetch_enhanced_traffic_safety_data <- function(
       if (exists("with_validation_hooks", mode = "function") && 
           exists("validate_traffic_safety_data", mode = "function")) {
         
-        # Apply validation hooks with timeout
-        setTimeLimit(cpu = 10, elapsed = 10)
+        message("Applying validation hooks to traffic safety data...")
+        
+        # Apply validation hooks without timeout
         traffic_data <- with_validation_hooks(
           function() { traffic_data },
           on_validation_fail = "warn"
@@ -204,16 +216,12 @@ fetch_enhanced_traffic_safety_data <- function(
         validator <- validate_traffic_safety_data(traffic_data)
         attr(traffic_data, "validation") <- validator
         
-        # Reset timeout
-        setTimeLimit(cpu = Inf, elapsed = Inf)
+        message("Validation completed successfully")
       } else {
         message("Validation functions not found. Skipping validation.")
       }
     }, error = function(e) {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
       message(paste("Error during validation:", e$message, "- Continuing without validation"))
-    }, finally = {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
     })
   }
   
@@ -223,9 +231,6 @@ fetch_enhanced_traffic_safety_data <- function(
       # Check if forecasting functions exist
       if (exists("prepare_timeseries_data", mode = "function") && 
           exists("generate_forecast", mode = "function")) {
-        
-        # Set timeout for forecasting operations
-        setTimeLimit(cpu = 15, elapsed = 15) 
         
         # Generate national level forecast
         message("Generating traffic safety forecasts...")
@@ -246,17 +251,12 @@ fetch_enhanced_traffic_safety_data <- function(
           national = national_forecast
         )
         
-        # Reset timeout
-        setTimeLimit(cpu = Inf, elapsed = Inf)
         message("Forecasting completed successfully")
       } else {
         message("Forecasting functions not found. Skipping forecasting.")
       }
     }, error = function(e) {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
       message(paste("Error during forecasting:", e$message, "- Continuing without forecasts"))
-    }, finally = {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
     })
   }
   
@@ -266,9 +266,6 @@ fetch_enhanced_traffic_safety_data <- function(
       # Check if spatial functions exist
       if (exists("prepare_spatial_data", mode = "function") && 
           exists("identify_spatial_clusters", mode = "function")) {
-        
-        # Set timeout for spatial operations
-        setTimeLimit(cpu = 15, elapsed = 15)
         
         message("Running traffic safety spatial analysis...")
         # Use the most recent year for spatial analysis
@@ -307,17 +304,12 @@ fetch_enhanced_traffic_safety_data <- function(
           attr(traffic_data, "spatial")$problem_areas <- problem_areas
         }
         
-        # Reset timeout
-        setTimeLimit(cpu = Inf, elapsed = Inf)
         message("Spatial analysis completed successfully")
       } else {
         message("Spatial analysis functions not found. Skipping spatial analysis.")
       }
     }, error = function(e) {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
       message(paste("Error during spatial analysis:", e$message, "- Continuing without spatial analysis"))
-    }, finally = {
-      setTimeLimit(cpu = Inf, elapsed = Inf)
     })
   }
   
