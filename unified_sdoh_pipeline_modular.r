@@ -97,8 +97,8 @@ crosswalk <- build_sdoh_crosswalk(
 log_message("STEP 2: FETCHING DATA FROM MULTIPLE SOURCES", 
            level = "INFO", log_file = log_file)
 
-# Import the data fetcher module
-source("fetch_county_data_final.r")
+# Import the data fetching module
+source("pipeline_modules/module_data_fetching.r")
 
 # Process years within the specified range
 log_message(paste("Processing data for years", options$min_year, "to", options$max_year), 
@@ -197,8 +197,7 @@ log_message("Processing data from multiple sources...",
 log_message("Main processing started. This may take several minutes...",
            level = "INFO", log_file = log_file)
 
-# For this example, we'll simulate a processed dataset
-# In the actual implementation, this would call the data processing functions
+# Process the data from all sources
 processed_data <- get_processed_data(
   census_data = census_data,
   nhgis_data = nhgis_data,
@@ -266,46 +265,3 @@ log_message(paste("Total variables:", nrow(crosswalk)),
 log_message("=================================================\n", 
            level = "INFO", log_file = log_file)
 
-# -------------------------------------------------------------------------
-# Helper function to simulate processed data
-# -------------------------------------------------------------------------
-get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
-  # This function simulates a processed dataset for the example
-  # In the actual implementation, it would process and combine data from different sources
-  
-  # Create a basic dataset with county IDs and years
-  counties <- data.frame(
-    geoid = sprintf("%05d", 1:3000),
-    name = paste("County", 1:3000),
-    state_fips = rep(sprintf("%02d", 1:50), each = 60),
-    state_name = rep(state.name[1:50], each = 60)
-  )
-  
-  # Create a dataset with all years and counties
-  years_df <- expand.grid(
-    geoid = counties$geoid,
-    year = years
-  )
-  
-  # Merge counties info
-  full_data <- merge(years_df, counties, by = "geoid")
-  
-  # Add some sample data for key variables
-  for (var in c("total_population", "median_household_income", "poverty_rate", "unemployment_rate")) {
-    # Check if this variable is in the crosswalk
-    if (var %in% crosswalk$variable_name) {
-      # Generate random values appropriate for this variable
-      if (var == "total_population") {
-        full_data[[var]] <- round(runif(nrow(full_data), 1000, 1000000))
-      } else if (var == "median_household_income") {
-        full_data[[var]] <- round(runif(nrow(full_data), 30000, 150000))
-      } else if (var == "poverty_rate") {
-        full_data[[var]] <- round(runif(nrow(full_data), 1, 30), 1)
-      } else if (var == "unemployment_rate") {
-        full_data[[var]] <- round(runif(nrow(full_data), 1, 15), 1)
-      }
-    }
-  }
-  
-  return(full_data)
-}
