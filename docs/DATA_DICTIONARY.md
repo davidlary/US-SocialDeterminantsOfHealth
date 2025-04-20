@@ -15,13 +15,13 @@ This documentation provides comprehensive details about all data sources used in
 | Environmental Health | 14 | EPA Air Quality System, EPA TRI, CDC Environmental Public Health Tracking |
 | Food Environment | 12 | USDA Food Environment Atlas, Feeding America |
 | Transportation | 13 | Census ACS, National Transit Database |
-| Traffic Safety | 7 | NHTSA FARS, CDC WONDER |
+| Traffic Safety | 12 | NHTSA FARS, CDC WONDER |
 | Social Cohesion | 12 | Census ACS, County Health Rankings, MIT Election Data |
 | Crime & Safety | 8 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
 | Built Environment | 5 | EPA Smart Location Database, Trust for Public Land |
 | Digital Access | 6 | FCC, Census ACS |
 | Climate & Weather | 7 | NOAA, EPA |
-| **Total** | **178** | |
+| **Total** | **183** | |
 
 ## Demographics and Population Data
 
@@ -149,7 +149,7 @@ This documentation provides comprehensive details about all data sources used in
 | dui_fatality_rate_per_100k | DUI-related fatality rate | NHTSA FARS | 1975-present | rate per 100k |
 | speeding_fatality_count | Speeding-related fatalities | NHTSA FARS | 1975-present | count |
 | speeding_fatality_rate_per_100k | Speeding-related fatality rate | NHTSA FARS | 1975-present | rate per 100k |
-| transport_mortality_count | Transport-related deaths | CDC WONDER | 1970-present | count |
+| transport_mortality_count | Transport-related deaths | CDC WONDER | 1999-2021 | count |
 
 ## Health Insurance Data
 

@@ -207,3 +207,14 @@ wastewater_discharge,Environmental Health,Toxicity-weighted concentrations in st
 white_nonhispanic_pct,NA,"White alone, not Hispanic or Latino, percent",NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
 wic_authorized_stores_per_1000,Food Environment & Access,"WIC-authorized stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,NA,TRUE,NA,NA,NA,TRUE
 zero_vehicle_households_pct,Transportation,Percentage of households with no vehicles,numeric_percent,American Community Survey,2009,2023,percent,no_vehicle_households_pct,NA,TRUE,NA,NA,NA,TRUE
+traffic_fatality_count,Traffic Safety,Number of traffic fatalities,numeric_count,NHTSA FARS,1975,2023,count,NA,NA,TRUE,Total traffic fatalities,NA,NA,TRUE
+traffic_fatality_rate_per_100k,Traffic Safety,Traffic fatality rate per 100k population,numeric_rate,NHTSA FARS,1975,2023,rate per 100k,traffic_fatality_count,NA,TRUE,Traffic fatalities per 100,000 population,NA,NA,TRUE
+traffic_injury_count,Traffic Safety,Number of traffic injuries,numeric_count,NHTSA FARS,1975,2023,count,NA,NA,TRUE,Total traffic injuries,NA,NA,TRUE
+traffic_injury_rate_per_100k,Traffic Safety,Traffic injury rate per 100k population,numeric_rate,NHTSA FARS,1975,2023,rate per 100k,traffic_injury_count,NA,TRUE,Traffic injuries per 100,000 population,NA,NA,TRUE
+ped_bike_fatality_count,Traffic Safety,Number of pedestrian and bicyclist fatalities,numeric_count,NHTSA FARS,1975,2023,count,NA,NA,TRUE,Pedestrian and bicyclist fatalities,NA,NA,TRUE
+ped_bike_fatality_rate_per_100k,Traffic Safety,Pedestrian/bicyclist fatality rate per 100k,numeric_rate,NHTSA FARS,1975,2023,rate per 100k,ped_bike_fatality_count,NA,TRUE,Pedestrian and bicyclist fatalities per 100,000 population,NA,NA,TRUE
+dui_fatality_count,Traffic Safety,Number of alcohol-impaired driving fatalities,numeric_count,NHTSA FARS,1975,2023,count,NA,NA,TRUE,Fatalities involving alcohol-impaired driving,NA,NA,TRUE
+dui_fatality_rate_per_100k,Traffic Safety,DUI fatality rate per 100k population,numeric_rate,NHTSA FARS,1975,2023,rate per 100k,dui_fatality_count,NA,TRUE,Alcohol-impaired driving fatalities per 100,000 population,NA,NA,TRUE
+speeding_fatality_count,Traffic Safety,Number of speeding-related fatalities,numeric_count,NHTSA FARS,1975,2023,count,NA,NA,TRUE,Fatalities involving speeding,NA,NA,TRUE
+speeding_fatality_rate_per_100k,Traffic Safety,Speeding fatality rate per 100k population,numeric_rate,NHTSA FARS,1975,2023,rate per 100k,speeding_fatality_count,NA,TRUE,Speeding-related fatalities per 100,000 population,NA,NA,TRUE
+transport_mortality_count,Traffic Safety,Total transportation-related deaths,numeric_count,CDC WONDER,1999,2021,count,NA,NA,TRUE,All transportation-related mortality from CDC WONDER,NA,NA,TRUE
