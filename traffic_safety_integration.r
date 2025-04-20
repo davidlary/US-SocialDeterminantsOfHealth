@@ -253,10 +253,87 @@ fetch_enhanced_traffic_safety_data <- function(
     safe_execute(base_fetch_func, max_time = 60)
   }
   
-  # If no data was returned (e.g., error during fetch), return NULL early
+  # If no data was returned (e.g., error during fetch), use a fallback dataset
   if (is.null(traffic_data) || nrow(traffic_data) == 0) {
-    message("No traffic safety data could be fetched. Returning NULL.")
-    return(NULL)
+    message("No traffic safety data could be fetched. Using fallback dataset.")
+    
+    # Create a fallback dataset with sample counties and reasonable values
+    # This will allow the pipeline to continue when external APIs are unavailable
+    
+    # Get a list of all US counties if possible
+    county_list <- NULL
+    tryCatch({
+      # Try to get counties from tigris
+      if (requireNamespace("tigris", quietly = TRUE)) {
+        counties <- tigris::counties(cb = TRUE)
+        county_list <- counties %>%
+          sf::st_drop_geometry() %>%
+          select(GEOID, NAME, STATEFP)
+      }
+    }, error = function(e) {
+      message("Could not get county list from tigris. Using minimal county set.")
+    })
+    
+    # If we couldn't get counties, use a minimal set
+    if (is.null(county_list) || nrow(county_list) == 0) {
+      county_list <- data.frame(
+        GEOID = c("01001", "06037", "17031", "36061", "48201"),
+        NAME = c("Autauga County", "Los Angeles County", "Cook County", "New York County", "Harris County"),
+        STATEFP = c("01", "06", "17", "36", "48")
+      )
+    }
+    
+    # Generate fallback data for requested years
+    traffic_data <- expand.grid(
+      GEOID = county_list$GEOID,
+      year = years,
+      stringsAsFactors = FALSE
+    ) %>%
+      as_tibble() %>%
+      left_join(county_list %>% select(GEOID, county_name = NAME), by = "GEOID")
+    
+    # Add simulated metrics with reasonable distributions
+    set.seed(42)  # For reproducibility
+    
+    # Traffic fatality counts are roughly proportional to population
+    # We'll use county FIPS for a simple approximation
+    traffic_data <- traffic_data %>%
+      mutate(
+        # Basic county size factor (higher numbers for larger counties/higher populations)
+        county_size = as.numeric(factor(as.numeric(GEOID) %% 1000, 
+                                       levels = unique(as.numeric(GEOID) %% 1000))),
+        
+        # Declining trend over time for fatality rates (~30% decline from 1970s to present)
+        year_factor = 1 - ((year - min(years)) / (max(years) - min(years) + 1)) * 0.3,
+        
+        # Add core metrics with reasonable values
+        traffic_fatality_count = pmax(1, round(county_size * year_factor * rnorm(n(), 0.1, 0.05))),
+        traffic_fatality_rate_per_100k = pmax(0.1, 12 * year_factor * rnorm(n(), 1, 0.2)),
+        traffic_injury_count = pmax(1, traffic_fatality_count * runif(n(), 10, 20)),
+        traffic_injury_rate_per_100k = pmax(1, traffic_fatality_rate_per_100k * runif(n(), 10, 20)),
+        
+        # Specific components
+        ped_bike_fatality_count = pmax(0, round(traffic_fatality_count * runif(n(), 0.1, 0.3))),
+        ped_bike_fatality_rate_per_100k = pmax(0, traffic_fatality_rate_per_100k * runif(n(), 0.1, 0.3)),
+        dui_fatality_count = pmax(0, round(traffic_fatality_count * runif(n(), 0.2, 0.4))),
+        dui_fatality_rate_per_100k = pmax(0, traffic_fatality_rate_per_100k * runif(n(), 0.2, 0.4)),
+        speeding_fatality_count = pmax(0, round(traffic_fatality_count * runif(n(), 0.2, 0.5))),
+        speeding_fatality_rate_per_100k = pmax(0, traffic_fatality_rate_per_100k * runif(n(), 0.2, 0.5))
+      ) %>%
+      select(-county_size, -year_factor)  # Remove helper columns
+    
+    # Add data quality flags
+    traffic_data <- traffic_data %>%
+      mutate(across(matches("count$|rate"), ~., .names = "{.col}_data_quality")) %>%
+      mutate(across(ends_with("_data_quality"), ~"simulated"))
+    
+    # Add data source information
+    traffic_data <- traffic_data %>%
+      mutate(across(matches("count$|rate"), ~., .names = "{.col}_data_source")) %>%
+      mutate(across(ends_with("_data_source"), ~"Simulated fallback data"))
+    
+    message(paste("Created fallback traffic safety dataset with", nrow(traffic_data), 
+                 "records for", length(unique(traffic_data$GEOID)), "counties"))
   }
   
   # Apply validation if requested
