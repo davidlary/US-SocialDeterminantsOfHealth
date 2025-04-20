@@ -28,22 +28,22 @@ The database contains organized tables with standardized variables across multip
 
 | Domain | Number of Variables | Primary Data Sources |
 |--------|---------------------|----------------------|
-| Demographics & Population | 12 | Census Bureau, IPUMS NHGIS |
-| Economic Factors | 11 | Census ACS, BLS, Opportunity Insights |
-| Education | 8 | Census ACS, NCES, Stanford Education Data Archive |
-| Health Status | 14 | CDC PLACES, CDC WONDER |
-| Healthcare Access | 10 | HRSA Area Health Resources Files, CMS |
-| Housing | 8 | Census ACS, HUD CHAS, Eviction Lab |
-| Environmental Health | 15 | EPA Air Quality System, CDC Environmental Public Health Tracking |
-| Food Environment | 7 | USDA Food Environment Atlas, Feeding America |
-| Transportation | 7 | Census ACS, National Transit Database |
-| Traffic Safety | 11 | NHTSA FARS, CDC WONDER |
-| Social Cohesion | 7 | Census ACS, County Health Rankings, MIT Election Data |
-| Crime & Safety | 5 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
-| Built Environment | 10 | EPA Smart Location Database, Trust for Public Land |
-| Disability | 7 | Census ACS |
-| Health Behaviors | 4 | CDC PLACES |
-| **Total** | **136** | |
+| Demographics & Population | 24 | Census Bureau, IPUMS NHGIS, SEER |
+| Economic Factors | 17 | Census ACS, BLS, Opportunity Insights |
+| Education | 15 | Census ACS, NCES, Stanford Education Data Archive |
+| Health Status | 29 | CDC PLACES, CDC WONDER, IHME |
+| Healthcare Access | 11 | HRSA Area Health Resources Files, CMS |
+| Housing | 18 | Census ACS, HUD CHAS, Eviction Lab |
+| Environmental Health | 14 | EPA Air Quality System, EPA TRI, CDC Environmental Public Health Tracking |
+| Food Environment | 12 | USDA Food Environment Atlas, Feeding America |
+| Transportation | 13 | Census ACS, National Transit Database |
+| Traffic Safety | 7 | NHTSA FARS, CDC WONDER |
+| Social Cohesion | 12 | Census ACS, County Health Rankings, MIT Election Data |
+| Crime & Safety | 8 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
+| Built Environment | 5 | EPA Smart Location Database, Trust for Public Land |
+| Digital Access | 6 | FCC, Census ACS |
+| Climate & Weather | 7 | NOAA, EPA |
+| **Total** | **178** | |
 
 The domains include:
 
@@ -60,6 +60,18 @@ The domains include:
 - **Social Cohesion**: Social capital, civic participation, family structure
 - **Crime and Safety**: Crime rates, community violence, safety perceptions
 - **Built Environment**: Land use, walkability, recreation access
+- **Digital Access**: Internet and computer access, broadband availability
+- **Climate & Weather**: Temperature, precipitation, extreme weather events
+
+### Required Data Sources
+
+For real-world analysis, ensure these data files exist:
+- NHGIS data files (CSV format) in `/data/nhgis/`
+- SEER population data files in `/data/seer/`
+- Census Bureau data (via API with proper credentials)
+- NHGIS/IPUMS data (via API with proper credentials)
+
+The pipeline will use actual data from these sources when available, falling back to cached data when needed.
 
 ## Getting Started
 
@@ -76,7 +88,16 @@ cd US-SocialDeterminantsOfHealth
 Rscript R/install_packages.r
 ```
 
-3. Run the data pipeline:
+3. Set up credentials (required for full access to data sources):
+   - For Census data: `Rscript R/utilities/set_api_key.r YOUR_CENSUS_API_KEY`
+   - For IPUMS/NHGIS: `Rscript R/utilities/set_ipums_credentials.r YOUR_USERNAME YOUR_PASSWORD`
+
+4. Clear any existing database files before running with updated code:
+```
+rm -f data/sdoh_county.duckdb*
+```
+
+5. Run the data pipeline:
 ```
 Rscript R/unified_sdoh_pipeline.r
 ```
@@ -87,7 +108,8 @@ Rscript R/unified_sdoh_pipeline.r
 - `--force-update` or `-f`: Force refresh of all cached data
 - `--verbose` or `-v`: Show detailed processing information
 - `--skip-interpolation`: Disable interpolation for missing data points
-- `--offline-mode` or `--offline`: Run in offline mode using only cached data
+- `--force-real-data=TRUE`: Ensure only real data is used (no simulations)
+- `--offline-mode=TRUE`: Run in offline mode using only cached data
 - `--output-format=csv,duckdb,sqlite`: Specify output format(s)
 - `--modules=traffic_safety,climate,housing`: Run only specific modules
 
@@ -427,3 +449,4 @@ For questions or issues related to this dataset, please contact David Lary (davi
 ## License
 
 This dataset is provided for research and public health purposes. The code in this repository is licensed under the MIT License, while the aggregated data is provided under CC BY 4.0. Individual data sources maintain their original licensing terms.
+

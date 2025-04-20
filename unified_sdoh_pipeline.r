@@ -352,7 +352,12 @@ extended_fetchers <- c(
   "fetch_substance_use_data.r",
   "fetch_digital_access_data.r",
   # Traffic safety data
-  "fetch_traffic_safety_data.r"
+  "fetch_traffic_safety_data.r",
+  # Additional data sources
+  "fetch_county_data_final.r",
+  # Historical and NHGIS data sources
+  "fetch_nhgis_data.r",
+  "fetch_historical_data.r"
 )
 
 for (fetcher in extended_fetchers) {
@@ -618,7 +623,7 @@ if (!use_ipumsr) {
   log_message("Note: Using placeholder NHGIS data if no files are found locally.", 
               level = "WARN", show_console = TRUE)
 } else {
-  log_message("Attempting to use IPUMS API to fetch NHGIS data...", 
+  log_message("Checking for IPUMS mode - will use offline mode", 
               level = "INFO", show_console = TRUE)
 }
 
@@ -1993,8 +1998,38 @@ tryCatch({
   setTimeLimit(cpu = Inf, elapsed = Inf)
 })
 
-# ---- Step 6: Create Documentation ----
-log_message("\nSTEP 6: GENERATING DOCUMENTATION",
+# ---- Step 6: Generate CONUS Maps ----
+log_message("\nSTEP 6: GENERATING CONUS MAPS FOR ALL VARIABLES",
+            level = "INFO", show_console = TRUE)
+
+# Source the map generation script
+source(file.path(root_dir, "generate_conus_maps.r"))
+
+# Generate maps for all variables and years
+map_result <- tryCatch({
+  generate_conus_maps(
+    output_dir = file.path(output_dir, "maps"),
+    db_path = file.path(output_dir, "us_county_sdoh_unified.duckdb"),
+    conus_only = TRUE,
+    parallel = FALSE
+  )
+  TRUE
+}, error = function(e) {
+  log_message(paste("ERROR: Improved map generation failed:", conditionMessage(e)), 
+              level = "ERROR", show_console = TRUE)
+  FALSE
+})
+
+if (map_result) {
+  log_message("CONUS maps successfully generated for all variables", 
+              level = "INFO", show_console = TRUE)
+} else {
+  log_message("CONUS map generation encountered errors - some maps may be missing", 
+              level = "WARN", show_console = TRUE)
+}
+
+# ---- Step 7: Create Documentation ----
+log_message("\nSTEP 7: GENERATING DOCUMENTATION",
             level = "INFO", show_console = TRUE)
 
 # Generate README.md with documentation
