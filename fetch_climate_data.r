@@ -77,7 +77,7 @@ fetch_climate_data <- function(
   } else if (offline_mode) {
     warning("Offline mode enabled but no cached climate data found. Returning empty dataframe.")
     return(tibble(
-      geoid = character(),
+      GEOID = character(),  # Use uppercase GEOID for consistency with pipeline
       county_name = character(),
       state_fips = character(),
       state_name = character(),
@@ -100,13 +100,13 @@ fetch_climate_data <- function(
     st_drop_geometry() %>%
     select(GEOID, NAME, STATEFP, STUSPS) %>%
     rename(
-      geoid = GEOID,
+      GEOID = GEOID,  # Keep GEOID as GEOID for consistency with pipeline
       county_name = NAME,
       state_fips = STATEFP,
       state_code = STUSPS
     ) %>%
     mutate(
-      geoid = as.character(geoid),
+      GEOID = as.character(GEOID),
       county_name = gsub(" County", "", county_name)
     )
   

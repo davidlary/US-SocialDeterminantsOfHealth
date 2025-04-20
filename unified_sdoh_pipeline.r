@@ -978,7 +978,7 @@ if (exists("process_extended_data_v2")) {
     years = all_years,
     skip_interpolation = skip_interpolation,  # Only skip basic interpolation
     original_db_path = NULL,  # We're creating a new consolidated DB
-    verbose = verbose,
+    verbose = TRUE,  # Force verbose mode to debug issues
     data_quality_flags = data_quality_flags
   )
 } else {

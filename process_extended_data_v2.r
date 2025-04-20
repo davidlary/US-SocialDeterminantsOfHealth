@@ -238,6 +238,19 @@ process_extended_data_v2 <- function(data_sources,
       # Ensure GEOID is properly formatted
       if ("GEOID" %in% names(source_data)) {
         source_data$GEOID <- sprintf("%05d", as.numeric(source_data$GEOID))
+      } else {
+        # Debug: Print out the columns when GEOID is missing
+        print_msg(paste("ERROR: GEOID missing in source:", source_name), 1)
+        print_msg(paste("Available columns:", paste(names(source_data), collapse=", ")), 1)
+        
+        # Check for fips or geoid column that we can convert
+        if ("fips" %in% names(source_data)) {
+          print_msg(paste("Converting 'fips' to 'GEOID' in source:", source_name), 1)
+          source_data$GEOID <- sprintf("%05d", as.numeric(source_data$fips))
+        } else if ("geoid" %in% names(source_data)) {
+          print_msg(paste("Converting 'geoid' to 'GEOID' in source:", source_name), 1)
+          source_data$GEOID <- sprintf("%05d", as.numeric(source_data$geoid))
+        }
       }
       
       # Get all variables from this source
@@ -246,6 +259,14 @@ process_extended_data_v2 <- function(data_sources,
                      names(source_data), value = TRUE, invert = TRUE)
       
       print_msg(paste("Found", length(var_cols), "variables in data frame"), 2)
+      
+      # Debug: Check if GEOID exists before joining
+      if (!"GEOID" %in% names(source_data)) {
+        print_msg(paste("ERROR: GEOID still missing in source after conversion:", source_name), 1)
+        print_msg(paste("This will cause a join error! Available columns:", paste(names(source_data), collapse=", ")), 1)
+        # Skip this source to prevent error
+        next
+      }
       
       # Merge with base dataframe to ensure complete county-year coverage
       merged_data <- county_years %>%
@@ -267,6 +288,19 @@ process_extended_data_v2 <- function(data_sources,
           # Ensure GEOID is properly formatted in subdata
           if ("GEOID" %in% names(subdata)) {
             subdata$GEOID <- sprintf("%05d", as.numeric(subdata$GEOID))
+          } else {
+            # Debug: Print out the columns when GEOID is missing
+            print_msg(paste("ERROR: GEOID missing in nested source:", source_name, "/", subname), 1)
+            print_msg(paste("Available columns:", paste(names(subdata), collapse=", ")), 1)
+            
+            # Check for fips or geoid column that we can convert
+            if ("fips" %in% names(subdata)) {
+              print_msg(paste("Converting 'fips' to 'GEOID' in nested source:", source_name, "/", subname), 1)
+              subdata$GEOID <- sprintf("%05d", as.numeric(subdata$fips))
+            } else if ("geoid" %in% names(subdata)) {
+              print_msg(paste("Converting 'geoid' to 'GEOID' in nested source:", source_name, "/", subname), 1)
+              subdata$GEOID <- sprintf("%05d", as.numeric(subdata$geoid))
+            }
           }
           
           # Get all variables from this subdata
@@ -274,6 +308,16 @@ process_extended_data_v2 <- function(data_sources,
                             names(subdata), value = TRUE, invert = TRUE)
           
           print_msg(paste("Found", length(sub_var_cols), "variables in", subname), 2)
+          
+          # Debug: Check if GEOID exists before joining
+          if (!"GEOID" %in% names(subdata)) {
+            print_msg(paste("ERROR: GEOID still missing in nested source after conversion:", 
+                          source_name, "/", subname), 1)
+            print_msg(paste("This will cause a join error! Available columns:", 
+                          paste(names(subdata), collapse=", ")), 1)
+            # Skip this source to prevent error
+            next
+          }
           
           # Merge with merged_data
           merged_data <- merged_data %>%
