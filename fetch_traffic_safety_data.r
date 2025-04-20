@@ -719,6 +719,15 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   fars_api_base <- "https://crashviewer.nhtsa.dot.gov/CrashAPI/"
   fars_data_url <- "https://www.nhtsa.gov/file-downloads?p=nhtsa/downloads/FARS/"
   
+  # Alternative data sources
+  fars_alt_sources <- list(
+    # Official alternative direct URLs for FARS files
+    nhtsa_ftp = "https://www.nhtsa.gov/content/nhtsa/downloads/", 
+    nhtsa_ftp2 = "https://crashstats.nhtsa.dot.gov/Api/Public/ViewPublication/",
+    # Data archive (for older data)
+    fars_archive = "https://www.transportation.gov/data/safety/archive/FARS"
+  )
+  
   # Create cache file path
   fars_cache_file <- file.path(cache_dir, paste0("fars_data_", min(years), "_", max(years), ".rds"))
   
@@ -726,6 +735,114 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   if (file.exists(fars_cache_file) && !refresh_cache) {
     message("Loading FARS data from cache...")
     return(readRDS(fars_cache_file))
+  }
+  
+  # Check for pre-downloaded data in the data directory
+  predownloaded_path <- file.path(dirname(cache_dir), "traffic_safety/fars")
+  if (dir.exists(predownloaded_path)) {
+    message("Checking for pre-downloaded FARS data...")
+    
+    # Look for year-specific data files
+    year_files <- list()
+    for (year in years) {
+      # Check for CSV files first (preferred format)
+      year_pattern <- paste0("fars.*", year, ".*\\.csv$|", year, ".*fars.*\\.csv$")
+      year_files_csv <- list.files(
+        path = predownloaded_path, 
+        pattern = year_pattern, 
+        recursive = TRUE, 
+        ignore.case = TRUE,
+        full.names = TRUE
+      )
+      
+      # If no CSV, check for Excel files
+      if (length(year_files_csv) == 0) {
+        year_pattern <- paste0("fars.*", year, ".*\\.xlsx?$|", year, ".*fars.*\\.xlsx?$")
+        year_files_xlsx <- list.files(
+          path = predownloaded_path, 
+          pattern = year_pattern, 
+          recursive = TRUE, 
+          ignore.case = TRUE,
+          full.names = TRUE
+        )
+        
+        if (length(year_files_xlsx) > 0) {
+          year_files[[as.character(year)]] <- year_files_xlsx[1]
+        }
+      } else {
+        year_files[[as.character(year)]] <- year_files_csv[1]
+      }
+    }
+    
+    # Process pre-downloaded files if found
+    if (length(year_files) > 0) {
+      message(paste("Found", length(year_files), "pre-downloaded FARS data files."))
+      
+      # Process each file
+      year_data_list <- list()
+      for (year in names(year_files)) {
+        file_path <- year_files[[year]]
+        message(paste("Processing pre-downloaded data for year", year, "from", basename(file_path)))
+        
+        # Read the file based on extension
+        if (grepl("\\.csv$", file_path, ignore.case = TRUE)) {
+          year_data <- tryCatch({
+            read.csv(file_path, stringsAsFactors = FALSE)
+          }, error = function(e) {
+            message(paste("Error reading CSV:", e$message))
+            return(NULL)
+          })
+        } else if (grepl("\\.xlsx?$", file_path, ignore.case = TRUE)) {
+          year_data <- tryCatch({
+            readxl::read_excel(file_path)
+          }, error = function(e) {
+            message(paste("Error reading Excel file:", e$message))
+            return(NULL)
+          })
+        } else {
+          year_data <- NULL
+        }
+        
+        if (!is.null(year_data) && nrow(year_data) > 0) {
+          # Process year data to match our expected output format
+          # Look for standard FARS columns and rename as needed
+          
+          # Add year column if missing
+          if (!"year" %in% names(year_data)) {
+            year_data$year <- as.numeric(year)
+          }
+          
+          # Standardize column names to lowercase
+          year_data <- year_data %>%
+            rename_with(~tolower(gsub(" ", "_", .x)))
+          
+          # Try to identify state and county columns to create FIPS
+          if (all(c("state", "county") %in% names(year_data)) && !"fips" %in% names(year_data)) {
+            year_data <- year_data %>%
+              mutate(
+                state = sprintf("%02d", as.numeric(state)),
+                county = sprintf("%03d", as.numeric(county)),
+                fips = paste0(state, county)
+              )
+          }
+          
+          # Add to data list
+          year_data_list[[year]] <- year_data
+        }
+      }
+      
+      # Combine all year data
+      if (length(year_data_list) > 0) {
+        fars_data <- bind_rows(year_data_list)
+        
+        # Process and save to cache
+        if (nrow(fars_data) > 0) {
+          saveRDS(fars_data, fars_cache_file)
+          message(paste("Saved processed FARS data from pre-downloaded files to cache with", nrow(fars_data), "records."))
+          return(fars_data)
+        }
+      }
+    }
   }
   
   message("Fetching FARS data from NHTSA API...")
@@ -763,13 +880,13 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
     } else {
       message(paste("Fetching FARS data for", year))
       
-      # First try API
+      # First try primary API
       api_data <- tryCatch({
         # Construct API endpoint for county-level data
         endpoint <- paste0(fars_api_base, "crashes/GetCrashesByLocation?year=", year, "&format=json")
         
         # Try to fetch data from API
-        response <- httr::GET(endpoint)
+        response <- httr::GET(endpoint, timeout(10))  # Add timeout to prevent hanging
         
         # Check if the request was successful
         if (httr::status_code(response) == 200) {
@@ -793,9 +910,114 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
         # If we get here, the API request failed or returned unexpected format
         NULL
       }, error = function(e) {
-        warning(paste("API error for year", year, ":", e$message))
+        warning(paste("Primary API error for year", year, ":", e$message))
         NULL
       })
+      
+      # If primary API failed, try alternative APIs
+      if (is.null(api_data)) {
+        message(paste("Primary API failed for year", year, ". Trying alternative sources..."))
+        
+        # Try alternative endpoint format from NHTSA
+        api_data <- tryCatch({
+          # Try alternative NHTSA API endpoint (different format)
+          alt_endpoint <- paste0("https://crashstats.nhtsa.dot.gov/Api/Public/GetCaseList?format=csv&year=", year)
+          
+          # Download to temporary file
+          temp_file <- tempfile(fileext = ".csv")
+          utils::download.file(alt_endpoint, temp_file, quiet = TRUE, mode = "wb")
+          
+          # Read the CSV file if it exists and has content
+          if (file.exists(temp_file) && file.size(temp_file) > 100) {
+            alt_data <- read.csv(temp_file, stringsAsFactors = FALSE)
+            
+            # Process the data to match expected format
+            if (nrow(alt_data) > 0) {
+              # Process to county level
+              if (all(c("STATE", "COUNTY") %in% names(alt_data))) {
+                county_data <- alt_data %>%
+                  group_by(STATE, COUNTY) %>%
+                  summarize(
+                    traffic_fatality_count = n(),
+                    .groups = "drop"
+                  ) %>%
+                  mutate(
+                    fips = sprintf("%02d%03d", as.numeric(STATE), as.numeric(COUNTY)),
+                    year = year
+                  )
+                return(county_data)
+              }
+            }
+          }
+          NULL
+        }, error = function(e) {
+          warning(paste("Alternative API error for year", year, ":", e$message))
+          NULL
+        }, finally = {
+          # Clean up temporary file
+          if (exists("temp_file") && file.exists(temp_file)) {
+            file.remove(temp_file)
+          }
+        })
+        
+        # If still no data, try downloading from alternative FARS website
+        if (is.null(api_data)) {
+          # Try to download from NHTSA FTP site
+          api_data <- tryCatch({
+            # Construct URL for files (vary by year and format)
+            alt_url <- if (year >= 2010) {
+              paste0("https://www.nhtsa.gov/file-downloads/download?p=nhtsa/downloads/FARS/", 
+                     year, "/National/FARS", year, "NationalCSV.zip")
+            } else {
+              paste0("https://www.nhtsa.gov/file-downloads/download?p=nhtsa/downloads/FARS/", 
+                     year, "/Data/FARS", year, ".zip")
+            }
+            
+            # Create temporary files
+            temp_zip <- tempfile(fileext = ".zip")
+            temp_dir <- tempdir()
+            
+            # Try to download the file
+            utils::download.file(alt_url, temp_zip, mode = "wb", quiet = TRUE)
+            
+            # Extract the files
+            utils::unzip(temp_zip, exdir = temp_dir)
+            
+            # Look for accident.csv or similar files
+            accident_file <- list.files(temp_dir, pattern = "accident\\.csv$", 
+                                      full.names = TRUE, recursive = TRUE)[1]
+            
+            # Process the accident data if found
+            if (!is.na(accident_file) && file.exists(accident_file)) {
+              accident_data <- read.csv(accident_file, stringsAsFactors = FALSE)
+              
+              # Process to county level
+              if (all(c("STATE", "COUNTY") %in% names(accident_data))) {
+                county_data <- accident_data %>%
+                  group_by(STATE, COUNTY) %>%
+                  summarize(
+                    traffic_fatality_count = n(),
+                    .groups = "drop"
+                  ) %>%
+                  mutate(
+                    fips = sprintf("%02d%03d", as.numeric(STATE), as.numeric(COUNTY)),
+                    year = year
+                  )
+                return(county_data)
+              }
+            }
+            NULL
+          }, error = function(e) {
+            warning(paste("Error downloading FARS file for year", year, ":", e$message))
+            NULL
+          }, finally = {
+            # Clean up temporary files
+            if (exists("temp_zip") && file.exists(temp_zip)) {
+              file.remove(temp_zip)
+            }
+          })
+        }
+      }
       
       # If API failed, try downloading the raw data files
       if (is.null(api_data)) {
