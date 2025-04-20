@@ -8,6 +8,27 @@ library(dplyr)
 library(readr)
 library(here)
 
+# Make sure we have the log_message function
+if (!exists("log_message")) {
+  log_message <- function(message, level = "INFO", show_console = TRUE, log_file = NULL) {
+    timestamp <- format(Sys.time(), "[%Y-%m-%d %H:%M:%S]")
+    formatted_message <- paste(timestamp, "[", level, "]", message)
+    
+    if (show_console) {
+      cat(formatted_message, "\n")
+    }
+    
+    if (!is.null(log_file)) {
+      if (!dir.exists(dirname(log_file)) && dirname(log_file) != ".") {
+        dir.create(dirname(log_file), recursive = TRUE, showWarnings = FALSE)
+      }
+      cat(formatted_message, "\n", file = log_file, append = TRUE)
+    }
+    
+    return(formatted_message)
+  }
+}
+
 # Import the consolidated crosswalk builder
 source("consolidate_crosswalks.r")
 

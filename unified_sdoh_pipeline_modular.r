@@ -76,7 +76,7 @@ if (update_info$days_since_update < options$max_data_age_days && !options$refres
 }
 
 # Log pipeline configuration
-log_message("Starting pipeline. Log will be saved to: " + log_file,
+log_message(paste("Starting pipeline. Log will be saved to:", log_file),
            level = "INFO", log_file = log_file)
 
 # -------------------------------------------------------------------------
