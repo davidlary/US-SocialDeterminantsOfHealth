@@ -672,16 +672,37 @@ safe_fetch_extended <- function(fetcher_name, fetch_function) {
   tryCatch({
     log_message(paste("Fetching data from", fetcher_name), level = "INFO")
     
-    # Call the appropriate fetcher function with standard parameters
-    result <- fetch_function(
+    # Check if the function accepts certain parameters before passing them
+    # Get the function arguments
+    func_args <- names(formals(fetch_function))
+    
+    # Build a list of arguments dynamically based on what the function accepts
+    args_list <- list(
       years = all_years,
       cache_dir = extended_cache_dir,
-      refresh_cache = refresh_cache,
-      allow_simulation = allow_simulation,
-      allow_interpolation = allow_interpolation,
-      data_quality_flags = data_quality_flags,
-      offline_mode = offline_mode
+      refresh_cache = refresh_cache
     )
+    
+    # Only add optional parameters if the function accepts them
+    if("allow_simulation" %in% func_args) {
+      args_list$allow_simulation <- allow_simulation
+    }
+    
+    if("allow_interpolation" %in% func_args) {
+      args_list$allow_interpolation <- allow_interpolation
+    }
+    
+    # Add remaining standard parameters
+    if("data_quality_flags" %in% func_args) {
+      args_list$data_quality_flags <- data_quality_flags
+    }
+    
+    if("offline_mode" %in% func_args) {
+      args_list$offline_mode <- offline_mode
+    }
+    
+    # Call the function with the appropriate arguments
+    result <- do.call(fetch_function, args_list)
     
     if (!is.null(result) && nrow(result) > 0) {
       log_message(paste("Successfully fetched", nrow(result), "records from", fetcher_name), 
