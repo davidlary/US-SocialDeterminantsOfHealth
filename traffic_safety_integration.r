@@ -212,10 +212,10 @@ fetch_enhanced_traffic_safety_data <- function(
       # Define a simple default implementation if loading fails
       message("fetch_traffic_safety_data.r not found in any expected location. Using default implementation.")
       
-      fetch_traffic_safety_data <- function(years, cache_dir, refresh_cache, allow_interpolation, allow_simulation, ...) {
+      fetch_traffic_safety_data <- function(years, cache_dir, refresh_cache, allow_interpolation, ...) {
         # Create some basic traffic safety data
         basic_data <- data.frame(
-          fips = c("01001", "06037", "17031", "36061", "48201"),
+          GEOID = c("01001", "06037", "17031", "36061", "48201"),  # Use GEOID instead of fips for consistency
           year = rep(max(as.numeric(years)), 5),
           county_name = c("Autauga County", "Los Angeles County", "Cook County", "New York County", "Harris County"),
           traffic_fatality_count = c(5, 120, 80, 40, 95),
@@ -228,12 +228,14 @@ fetch_enhanced_traffic_safety_data <- function(
   
   # Base function to fetch data
   base_fetch_func <- function() {
+    # Remove allow_simulation parameter as it's not supported in fetch_traffic_safety_data
     fetch_traffic_safety_data(
       years = years,
       cache_dir = cache_dir,
       refresh_cache = refresh_cache,
       allow_interpolation = allow_interpolation,
-      allow_simulation = allow_simulation,
+      # Note: allow_simulation parameter is not used by fetch_traffic_safety_data
+      # Omitting the parameter to prevent the error
       ...
     )
   }
@@ -349,7 +351,10 @@ create_traffic_safety_visualizations <- function(
       
       # Save to CSV file for visualization
       map_data_file <- file.path(output_dir, "traffic_fatality_rates.csv")
-      write.csv(latest_data[, c("fips", "county_name", "traffic_fatality_rate_per_100k")], 
+      
+      # Check whether we have GEOID or fips
+      id_column <- if ("GEOID" %in% names(latest_data)) "GEOID" else "fips"
+      write.csv(latest_data[, c(id_column, "county_name", "traffic_fatality_rate_per_100k")], 
                 map_data_file, row.names = FALSE)
       
       return(map_data_file)
