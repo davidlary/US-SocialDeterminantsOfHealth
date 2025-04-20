@@ -38,7 +38,7 @@ if (!exists("is_sourced")) {
 #' @param overwrite Whether to overwrite existing map files
 #' @return TRUE if successful, FALSE otherwise
 generate_conus_maps <- function(output_dir = "output/maps",
-                               db_path = "us_county_sdoh_data.duckdb",
+                               db_path = "output/us_county_sdoh_unified.duckdb",
                                shapefile_path = NULL,
                                years = NULL,
                                variables = NULL, 
@@ -71,6 +71,25 @@ generate_conus_maps <- function(output_dir = "output/maps",
   
   # Step 2: Connect to database
   cat("Connecting to database:", db_path, "...\n")
+  
+  # Try to find the database file if it doesn't exist
+  if (!file.exists(db_path)) {
+    potential_db_paths <- c(
+      "us_county_sdoh_unified.duckdb",
+      "output/us_county_sdoh_unified.duckdb",
+      "us_county_sdoh_data.duckdb",
+      "output/us_county_sdoh_data.duckdb"
+    )
+    
+    for (potential_path in potential_db_paths) {
+      if (file.exists(potential_path)) {
+        cat("Database not found at", db_path, "but found at", potential_path, "\n")
+        db_path <- potential_path
+        break
+      }
+    }
+  }
+  
   tryCatch({
     con <- dbConnect(duckdb(), db_path)
     cat("Successfully connected to database\n")
@@ -88,29 +107,64 @@ generate_conus_maps <- function(output_dir = "output/maps",
   # Step 3: Get available data years and variables 
   cat("Getting available years and variables...\n")
   tryCatch({
-    # Try different table names since database structure could vary
-    tables_to_try <- c("county_sdoh_data", "county_time_series", "county_interpolated")
+    # Handle two possible database structures:
+    # 1. Wide format (old): Variables as columns (county_sdoh_data, county_time_series, etc.)
+    # 2. Normalized format (new): Data in sdoh_data table with (geoid, year, variable_name, value) format
+    
     data_table_found <- FALSE
     
-    for (table in tables_to_try) {
-      if (dbExistsTable(con, table)) {
-        cat("Found data in table:", table, "\n")
+    # Check first for the newer normalized structure (sdoh_data table)
+    if (dbExistsTable(con, "sdoh_data") && dbExistsTable(con, "variables")) {
+      cat("Found normalized database structure with sdoh_data table\n")
+      
+      # Get available years
+      available_years <- dbGetQuery(con, "SELECT DISTINCT year FROM sdoh_data ORDER BY year")$year
+      
+      if (length(available_years) > 0) {
+        cat("Found", length(available_years), "years in the database, from", 
+            min(available_years), "to", max(available_years), "\n")
         
-        # Get all available years from this table
-        available_years <- dbGetQuery(con, sprintf("SELECT DISTINCT year FROM %s ORDER BY year", table))$year
+        # Get available variables from the variables table
+        data_cols <- dbGetQuery(con, "SELECT variable_name FROM variables")$variable_name
         
-        if (length(available_years) > 0) {
-          cat("Found", length(available_years), "years in the database, from", 
-              min(available_years), "to", max(available_years), "\n")
+        if (length(data_cols) > 0) {
+          cat("Found", length(data_cols), "variables in the database\n")
+          data_table_found <- TRUE
           
-          # Get all available variables (excluding metadata and flags)
-          colnames <- dbListFields(con, table)
-          data_cols <- colnames[!grepl("_interpolated$|_extended$|GEOID|NAME|name|geoid|year|source|data_|interpolation_|extension_", colnames)]
+          # Use normalized table format for future queries
+          use_normalized_format <- TRUE
+        }
+      }
+    }
+    
+    # If normalized structure not found, try the older wide format tables
+    if (!data_table_found) {
+      tables_to_try <- c("county_sdoh_data", "county_time_series", "county_interpolated")
+      
+      for (table in tables_to_try) {
+        if (dbExistsTable(con, table)) {
+          cat("Found data in legacy table format:", table, "\n")
           
-          if (length(data_cols) > 0) {
-            cat("Found", length(data_cols), "variables in the database\n")
-            data_table_found <- TRUE
-            break
+          # Get all available years from this table
+          available_years <- dbGetQuery(con, sprintf("SELECT DISTINCT year FROM %s ORDER BY year", table))$year
+          
+          if (length(available_years) > 0) {
+            cat("Found", length(available_years), "years in the database, from", 
+                min(available_years), "to", max(available_years), "\n")
+            
+            # Get all available variables (excluding metadata and flags)
+            colnames <- dbListFields(con, table)
+            data_cols <- colnames[!grepl("_interpolated$|_extended$|GEOID|NAME|name|geoid|year|source|data_|interpolation_|extension_", colnames)]
+            
+            if (length(data_cols) > 0) {
+              cat("Found", length(data_cols), "variables in the database\n")
+              data_table_found <- TRUE
+              
+              # Use wide format for future queries
+              use_normalized_format <- FALSE
+              wide_format_table <- table
+              break
+            }
           }
         }
       }
@@ -464,47 +518,86 @@ generate_conus_maps <- function(output_dir = "output/maps",
       default_palette
     }
     
-    # Determine table to query
-    query_table <- ""
-    for (table in tables_to_try) {
-      if (dbExistsTable(con, table)) {
-        # Check if this table has this variable
-        cols <- dbListFields(con, table)
-        if (variable %in% cols) {
-          query_table <- table
-          break
+    # Fetch data for this year and variable - handling both database formats
+    var_data <- NULL
+    
+    if (exists("use_normalized_format") && use_normalized_format) {
+      # For normalized format (sdoh_data table)
+      query <- sprintf("
+        SELECT 
+          c.geoid, 
+          d.value as %s
+        FROM counties c
+        JOIN sdoh_data d ON c.geoid = d.geoid
+        WHERE d.year = %d
+        AND d.variable_name = '%s'
+      ", variable, year, variable)
+      
+      var_data <- tryCatch({
+        result <- dbGetQuery(con, query)
+        
+        # Rename the column to match the variable name
+        names(result)[names(result) == "value"] <- variable
+        
+        # Add GEOID column for compatibility with shapefile join
+        result$GEOID <- result$geoid
+        
+        result
+      }, error = function(e) {
+        cat(sprintf("ERROR: Failed to get data for %s in %d from normalized table: %s\n", 
+                   variable, year, conditionMessage(e)))
+        return(NULL)
+      })
+    } else {
+      # For wide format (legacy tables)
+      query_table <- ""
+      for (table in tables_to_try) {
+        if (dbExistsTable(con, table)) {
+          # Check if this table has this variable
+          cols <- dbListFields(con, table)
+          if (variable %in% cols) {
+            query_table <- table
+            break
+          }
         }
       }
-    }
-    
-    if (query_table == "") {
-      cat(sprintf("WARNING: No table found containing variable %s\n", variable))
-      return(NULL)
-    }
-    
-    # Fetch data for this year and variable
-    query <- sprintf("
-      SELECT 
-        GEOID, 
-        %s
-      FROM %s
-      WHERE year = %d
-    ", variable, query_table, year)
-    
-    var_data <- tryCatch({
-      result <- dbGetQuery(con, query)
       
-      # Convert GEOID to character to match shapefile
-      if ("GEOID" %in% names(result)) {
-        result$GEOID <- as.character(result$GEOID)
+      if (query_table == "") {
+        cat(sprintf("WARNING: No table found containing variable %s\n", variable))
+        return(NULL)
       }
       
-      result
-    }, error = function(e) {
-      cat(sprintf("ERROR: Failed to get data for %s in %d: %s\n", 
-                 variable, year, conditionMessage(e)))
-      return(NULL)
-    })
+      # Check if GEOID or geoid is used in this table
+      cols <- dbListFields(con, query_table)
+      geoid_col <- if ("GEOID" %in% cols) "GEOID" else "geoid"
+      
+      # Fetch data for this year and variable
+      query <- sprintf("
+        SELECT 
+          %s, 
+          %s
+        FROM %s
+        WHERE year = %d
+      ", geoid_col, variable, query_table, year)
+      
+      var_data <- tryCatch({
+        result <- dbGetQuery(con, query)
+        
+        # Add GEOID column for compatibility with shapefile join
+        if (geoid_col == "geoid") {
+          result$GEOID <- result$geoid
+        }
+        
+        # Convert GEOID to character to match shapefile
+        result$GEOID <- as.character(result$GEOID)
+        
+        result
+      }, error = function(e) {
+        cat(sprintf("ERROR: Failed to get data for %s in %d from wide table: %s\n", 
+                   variable, year, conditionMessage(e)))
+        return(NULL)
+      })
+    }
     
     if (is.null(var_data) || nrow(var_data) == 0) {
       cat(sprintf("WARNING: No data available for %s in %d\n", variable, year))
@@ -746,42 +839,91 @@ generate_conus_maps <- function(output_dir = "output/maps",
       next
     }
     
-    # Determine query table
-    query_table <- tables_to_try[1]  # Default to first table
-    for (table in tables_to_try) {
-      if (dbExistsTable(con, table)) {
-        # Check if table has year column
-        year_count <- dbGetQuery(con, sprintf("SELECT COUNT(*) FROM %s WHERE year = %d", table, year))
-        if (year_count[1,1] > 0) {
-          query_table <- table
-          break
+    # Fetch data for all variables in this year - support both database formats
+    combined_data <- NULL
+    
+    if (exists("use_normalized_format") && use_normalized_format) {
+      # For normalized format (sdoh_data table)
+      # We'll get the data for each variable separately and then join them together
+      
+      # Start with the county IDs
+      combined_data <- dbGetQuery(con, "SELECT geoid FROM counties")
+      combined_data$GEOID <- combined_data$geoid  # Add uppercase version for joining
+      
+      # For each variable, get the data and add it as a column
+      for (variable in display_vars) {
+        query <- sprintf("
+          SELECT 
+            c.geoid, 
+            d.value as %s
+          FROM counties c
+          LEFT JOIN sdoh_data d ON c.geoid = d.geoid AND d.year = %d AND d.variable_name = '%s'
+        ", variable, year, variable)
+        
+        var_data <- tryCatch({
+          result <- dbGetQuery(con, query)
+          # Rename the column to match the variable name if needed
+          if ("value" %in% names(result)) {
+            names(result)[names(result) == "value"] <- variable
+          }
+          result
+        }, error = function(e) {
+          cat(sprintf("ERROR: Failed to get data for %s in %d from normalized table: %s\n", 
+                     variable, year, conditionMessage(e)))
+          return(NULL)
+        })
+        
+        if (!is.null(var_data) && nrow(var_data) > 0) {
+          # Join with the existing data
+          combined_data <- combined_data %>%
+            left_join(var_data %>% select(geoid, !!sym(variable)), by = "geoid")
         }
       }
-    }
-    
-    # Fetch data for all variables in this year
-    query <- sprintf("
-      SELECT 
-        GEOID, 
-        %s
-      FROM %s
-      WHERE year = %d
-    ", paste(display_vars, collapse = ", "), query_table, year)
-    
-    combined_data <- tryCatch({
-      result <- dbGetQuery(con, query)
-      
-      # Convert GEOID to character for joining
-      if ("GEOID" %in% names(result)) {
-        result$GEOID <- as.character(result$GEOID)
+    } else {
+      # For wide format (legacy tables)
+      query_table <- tables_to_try[1]  # Default to first table
+      for (table in tables_to_try) {
+        if (dbExistsTable(con, table)) {
+          # Check if table has year column
+          year_count <- dbGetQuery(con, sprintf("SELECT COUNT(*) FROM %s WHERE year = %d", table, year))
+          if (year_count[1,1] > 0) {
+            query_table <- table
+            break
+          }
+        }
       }
       
-      result
-    }, error = function(e) {
-      cat(sprintf("ERROR: Failed to get combined data for %d: %s\n", 
-                 year, conditionMessage(e)))
-      return(NULL)
-    })
+      # Check if GEOID or geoid is used in this table
+      cols <- dbListFields(con, query_table)
+      geoid_col <- if ("GEOID" %in% cols) "GEOID" else "geoid"
+      
+      # Fetch data for all variables in this year
+      query <- sprintf("
+        SELECT 
+          %s, 
+          %s
+        FROM %s
+        WHERE year = %d
+      ", geoid_col, paste(display_vars, collapse = ", "), query_table, year)
+      
+      combined_data <- tryCatch({
+        result <- dbGetQuery(con, query)
+        
+        # Add GEOID column for compatibility with shapefile join
+        if (geoid_col == "geoid") {
+          result$GEOID <- result$geoid
+        }
+        
+        # Convert GEOID to character for joining
+        result$GEOID <- as.character(result$GEOID)
+        
+        result
+      }, error = function(e) {
+        cat(sprintf("ERROR: Failed to get combined data for %d from wide table: %s\n", 
+                   year, conditionMessage(e)))
+        return(NULL)
+      })
+    }
     
     if (is.null(combined_data) || nrow(combined_data) == 0) {
       cat(sprintf("WARNING: No data available for combined map in %d\n", year))
@@ -914,43 +1056,83 @@ generate_conus_maps <- function(output_dir = "output/maps",
       next
     }
     
-    # Determine query table
-    query_table <- tables_to_try[1]  # Default to first table
-    for (table in tables_to_try) {
-      if (dbExistsTable(con, table)) {
-        # Check if table has this variable
-        cols <- dbListFields(con, table)
-        if (variable %in% cols) {
-          query_table <- table
-          break
+    # Fetch data for all years for this variable - handle both database formats
+    timeseries_data <- NULL
+    
+    if (exists("use_normalized_format") && use_normalized_format) {
+      # For normalized format (sdoh_data table)
+      query <- sprintf("
+        SELECT 
+          c.geoid, 
+          d.year,
+          d.value as %s
+        FROM counties c
+        JOIN sdoh_data d ON c.geoid = d.geoid
+        WHERE d.year IN (%s)
+        AND d.variable_name = '%s'
+      ", variable, paste(display_years, collapse = ", "), variable)
+      
+      timeseries_data <- tryCatch({
+        result <- dbGetQuery(con, query)
+        
+        # Rename the column to match the variable name
+        names(result)[names(result) == "value"] <- variable
+        
+        # Add GEOID column for compatibility with shapefile join
+        result$GEOID <- result$geoid
+        
+        result
+      }, error = function(e) {
+        cat(sprintf("ERROR: Failed to get time series data for %s from normalized table: %s\n", 
+                   variable, conditionMessage(e)))
+        return(NULL)
+      })
+    } else {
+      # For wide format (legacy tables)
+      query_table <- tables_to_try[1]  # Default to first table
+      for (table in tables_to_try) {
+        if (dbExistsTable(con, table)) {
+          # Check if table has this variable
+          cols <- dbListFields(con, table)
+          if (variable %in% cols) {
+            query_table <- table
+            break
+          }
         }
       }
-    }
-    
-    # Fetch data for all years for this variable
-    query <- sprintf("
-      SELECT 
-        GEOID, 
-        year,
-        %s
-      FROM %s
-      WHERE year IN (%s)
-    ", variable, query_table, paste(display_years, collapse = ", "))
-    
-    timeseries_data <- tryCatch({
-      result <- dbGetQuery(con, query)
       
-      # Convert GEOID to character for joining
-      if ("GEOID" %in% names(result)) {
+      # Check if GEOID or geoid is used in this table
+      cols <- dbListFields(con, query_table)
+      geoid_col <- if ("GEOID" %in% cols) "GEOID" else "geoid"
+      
+      # Fetch data for all years for this variable
+      query <- sprintf("
+        SELECT 
+          %s, 
+          year,
+          %s
+        FROM %s
+        WHERE year IN (%s)
+      ", geoid_col, variable, query_table, paste(display_years, collapse = ", "))
+      
+      timeseries_data <- tryCatch({
+        result <- dbGetQuery(con, query)
+        
+        # Add GEOID column for compatibility with shapefile join
+        if (geoid_col == "geoid") {
+          result$GEOID <- result$geoid
+        }
+        
+        # Convert GEOID to character for joining
         result$GEOID <- as.character(result$GEOID)
-      }
-      
-      result
-    }, error = function(e) {
-      cat(sprintf("ERROR: Failed to get time series data for %s: %s\n", 
-                 variable, conditionMessage(e)))
-      return(NULL)
-    })
+        
+        result
+      }, error = function(e) {
+        cat(sprintf("ERROR: Failed to get time series data for %s from wide table: %s\n", 
+                   variable, conditionMessage(e)))
+        return(NULL)
+      })
+    }
     
     if (is.null(timeseries_data) || nrow(timeseries_data) == 0) {
       cat(sprintf("WARNING: No time series data available for %s\n", variable))
