@@ -22,7 +22,7 @@ This dataset combines county-level data on social determinants of health from mu
 
 ## Data Structure
 
-The database contains organized tables with standardized variables across multiple domains.
+The database contains organized tables with standardized variables across multiple domains. For a complete listing of all variables and their metadata, see the [Data Dictionary](docs/DATA_DICTIONARY.md).
 
 ### Summary of Variables by Domain
 
@@ -97,9 +97,13 @@ Rscript R/install_packages.r
 rm -f data/sdoh_county.duckdb*
 ```
 
-5. Run the data pipeline:
+5. Run the data pipeline (using either the traditional or modular version):
 ```
+# Traditional pipeline
 Rscript R/unified_sdoh_pipeline.r
+
+# OR use the new modular pipeline (recommended)
+Rscript R/unified_sdoh_pipeline_modular.r
 ```
 
 ### Command Line Options
@@ -288,6 +292,52 @@ Rscript R/cache_federal_data.r --sources=traffic_safety,census
 | independent_living_disability_pct | Independent living disability | Percentage | Census ACS | 1990-present |
 
 ## Recent Updates
+
+### Modular Pipeline Architecture (April 2025)
+
+The SDOH pipeline has been refactored into a modular architecture to improve maintainability, readability, and extensibility. This new architecture breaks down the monolithic pipeline into focused, independent components:
+
+#### Key Components
+
+1. **Core Module** (`module_core.r`):
+   - Handles initialization, logging, and utilities
+   - Manages configuration and parallel processing setup
+   - Provides core functionality used by all other modules
+
+2. **Crosswalk Module** (`module_crosswalk.r`):
+   - Builds and validates the unified variable crosswalk
+   - Ensures all 255 variables are properly defined and categorized
+   - Updates documentation with accurate variable counts
+
+3. **Data Fetching Module** (`module_data_fetching.r`):
+   - Retrieves data from Census, NHGIS, CDC, and other sources
+   - Implements caching and fallback mechanisms
+   - Handles data quality tracking and source attribution
+
+4. **Database Module** (`module_database.r`):
+   - Creates and manages the DuckDB database
+   - Implements the normalized schema design
+   - Creates views for easy data access
+
+5. **Maps Module** (`module_maps.r`):
+   - Generates county-level choropleth maps
+   - Creates visualizations by variable, year, and domain
+   - Supports both CONUS and state-level maps
+
+6. **Documentation Module** (`module_documentation.r`):
+   - Generates comprehensive documentation
+   - Maintains data dictionaries and README files
+   - Ensures consistency across all documentation
+
+#### Benefits of the Modular Architecture
+
+- **Improved Maintainability**: Each module can be updated independently
+- **Easier Debugging**: Issues are isolated to specific modules
+- **Better Organization**: Clear separation of concerns
+- **Enhanced Extensibility**: New features can be added as new modules
+- **Simplified Testing**: Modules can be tested in isolation
+
+To use the modular pipeline, run `Rscript R/unified_sdoh_pipeline_modular.r` instead of the traditional pipeline script. For detailed instructions on using and extending the modular pipeline, see the [Modular Pipeline Guide](docs/MODULAR_PIPELINE.md).
 
 ### Traffic Safety Module (April 2025)
 

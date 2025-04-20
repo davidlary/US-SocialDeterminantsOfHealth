@@ -6,22 +6,22 @@ This documentation provides comprehensive details about all data sources used in
 
 | Domain | Number of Variables | Primary Data Sources |
 |--------|---------------------|----------------------|
-| Demographics & Population | 24 | Census Bureau, IPUMS NHGIS, SEER |
-| Economic Factors | 17 | Census ACS, BLS, Opportunity Insights |
-| Education | 15 | Census ACS, NCES, Stanford Education Data Archive |
-| Health Status | 29 | CDC PLACES, CDC WONDER, IHME |
-| Healthcare Access | 11 | HRSA Area Health Resources Files, CMS |
-| Housing | 18 | Census ACS, HUD CHAS, Eviction Lab |
-| Environmental Health | 14 | EPA Air Quality System, EPA TRI, CDC Environmental Public Health Tracking |
-| Food Environment | 12 | USDA Food Environment Atlas, Feeding America |
-| Transportation | 13 | Census ACS, National Transit Database |
+| Demographics & Population | 6 | Census Bureau, IPUMS NHGIS, SEER |
+| Economic Factors | 34 | Census ACS, BLS, Opportunity Insights |
+| Education | 20 | Census ACS, NCES, Stanford Education Data Archive |
+| Health Status | 46 | CDC PLACES, CDC WONDER, IHME |
+| Healthcare Access | 16 | HRSA Area Health Resources Files, CMS |
+| Housing | 24 | Census ACS, HUD CHAS, Eviction Lab |
+| Environmental Health | 18 | EPA Air Quality System, EPA TRI, CDC Environmental Public Health Tracking |
+| Food Environment | 15 | USDA Food Environment Atlas, Feeding America |
+| Transportation | 17 | Census ACS, National Transit Database |
 | Traffic Safety | 12 | NHTSA FARS, CDC WONDER |
-| Social Cohesion | 12 | Census ACS, County Health Rankings, MIT Election Data |
-| Crime & Safety | 8 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
-| Built Environment | 5 | EPA Smart Location Database, Trust for Public Land |
+| Social Cohesion | 11 | Census ACS, County Health Rankings, MIT Election Data |
+| Crime & Safety | 5 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
+| Built Environment | 10 | EPA Smart Location Database, Trust for Public Land |
 | Digital Access | 6 | FCC, Census ACS |
 | Climate & Weather | 7 | NOAA, EPA |
-| **Total** | **183** | |
+| **Total** | **255** | |
 
 ## Demographics and Population Data
 
