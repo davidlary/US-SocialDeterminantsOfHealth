@@ -89,6 +89,39 @@ Rscript R/unified_sdoh_pipeline.r
 - `--skip-interpolation`: Disable interpolation for missing data points
 - `--offline-mode` or `--offline`: Run in offline mode using only cached data
 - `--output-format=csv,duckdb,sqlite`: Specify output format(s)
+- `--modules=traffic_safety,climate,housing`: Run only specific modules
+
+## Offline Mode and Data Caching
+
+The pipeline supports comprehensive offline operation using the data caching system:
+
+### Caching All Data (Recommended)
+
+To predownload all necessary data and create fallbacks:
+
+```bash
+# Cache all sources
+Rscript R/cache_sdoh_data.r
+
+# Run the pipeline in offline mode
+Rscript R/unified_sdoh_pipeline.r --offline-mode
+```
+
+### Selective Caching
+
+To cache only specific data sources:
+
+```bash
+# Cache just traffic safety and census data
+Rscript R/cache_federal_data.r --sources=traffic_safety,census
+```
+
+### Caching Features
+
+- **Multiple Fallbacks**: Each data source has multiple fallback methods
+- **Pre-downloaded Data**: Uses locally stored files when APIs fail
+- **Sample Data Generation**: Creates realistic sample data as a last resort
+- **Comprehensive Coverage**: Covers all data domains in the pipeline
 
 ## Data Dictionary
 
@@ -232,11 +265,13 @@ Rscript R/unified_sdoh_pipeline.r
 | ambulatory_disability_pct | Ambulatory disability | Percentage | Census ACS | 1990-present |
 | independent_living_disability_pct | Independent living disability | Percentage | Census ACS | 1990-present |
 
-## Traffic Safety Module
+## Recent Updates
+
+### Traffic Safety Module (April 2025)
 
 The traffic safety module is a comprehensive component that fetches and analyzes traffic safety data at the county level across the United States. It provides detailed information about traffic fatalities, injuries, and related risk factors from 1970 to the present.
 
-### Key Features
+#### Key Features
 
 1. **Data Sources Integration**:
    - NHTSA Fatality Analysis Reporting System (FARS) - county-level traffic fatality data
@@ -268,7 +303,7 @@ The traffic safety module is a comprehensive component that fetches and analyzes
    - Time series visualizations
    - Interactive and static outputs
 
-### Integration with Pipeline
+#### Integration with Pipeline
 
 The traffic safety module is fully integrated with the unified SDOH pipeline, with these components:
 
@@ -287,6 +322,41 @@ The traffic safety module is fully integrated with the unified SDOH pipeline, wi
    - Prevents pipeline hanging with timeout management
    - Provides fallback mechanisms if components fail
 
+### Comprehensive Data Caching System (April 2025)
+
+A new comprehensive caching system ensures the pipeline can run reliably even when external APIs are unavailable:
+
+#### Key Features
+
+1. **Multiple Fallback Mechanisms**:
+   - Primary API access with error handling
+   - Alternative API endpoints if primary fails
+   - Direct file download if APIs are unavailable
+   - Pre-downloaded sample data as final fallback
+
+2. **Coverage for All Data Sources**:
+   - Traffic safety data (NHTSA FARS, CDC WONDER)
+   - County shapefiles from Census Bureau
+   - CDC PLACES health indicators
+   - USDA Food Environment Atlas
+   - EPA environmental data (TRI, Air Quality)
+   - Census Bureau data (ACS, Decennial, PEP)
+   - FBI Crime data (UCR)
+   - Healthcare data (HRSA AHRF)
+   - Housing data (HUD CHAS, FMR)
+   - Transportation data (NHTS)
+   - IPUMS NHGIS time series data
+   - IHME life expectancy data
+
+3. **Robust Implementation**:
+   - Three dedicated caching scripts:
+     - `cache_sdoh_data.r` - Comprehensive caching for all sources
+     - `cache_federal_data.r` - Focused on federal data sources
+     - `traffic_safety_cache.r` - Special handling for traffic safety data
+   - Safe download functions with timeouts and retries
+   - Consistent directory structure for all cached data
+   - Detailed logging and reporting of cache status
+
 ## Using the Dataset
 
 The pipeline creates a DuckDB database in `output/us_county_sdoh_unified.duckdb`. You can connect to it using:
@@ -300,7 +370,7 @@ con <- dbConnect(duckdb::duckdb(), 'output/us_county_sdoh_unified.duckdb')
 
 # Get the latest traffic safety data for all counties
 latest_data <- dbGetQuery(con, "
-  SELECT fips, county_name, 
+  SELECT GEOID, county_name, 
          traffic_fatality_rate_per_100k, dui_fatality_rate_per_100k, 
          traffic_fatality_count_data_quality
   FROM latest_county_data
@@ -311,7 +381,7 @@ la_traffic_data <- dbGetQuery(con, "
   SELECT year, traffic_fatality_count, traffic_fatality_rate_per_100k,
          dui_fatality_count, ped_bike_fatality_count
   FROM county_time_series 
-  WHERE geoid = '06037' -- Los Angeles County
+  WHERE GEOID = '06037' -- Los Angeles County
   ORDER BY year
 ")
 

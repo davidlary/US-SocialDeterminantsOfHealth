@@ -737,6 +737,36 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
     return(readRDS(fars_cache_file))
   }
   
+  # Create cache directory for traffic safety
+  traffic_safety_dir <- file.path(cache_dir, "traffic_safety")
+  if (!dir.exists(traffic_safety_dir)) {
+    dir.create(traffic_safety_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # Check for predownloaded sample data
+  fars_sample_path <- file.path(dirname(cache_dir), "traffic_safety/fars/FARS_2020_county.csv")
+  if (file.exists(fars_sample_path)) {
+    message("Found pre-downloaded sample FARS data file. Using this as seed data.")
+    
+    # Read the sample data
+    sample_data <- read.csv(fars_sample_path, stringsAsFactors = FALSE)
+    
+    # Make sure the required 2020 data is present in the request
+    if (2020 %in% years) {
+      # Initialize fars_data with the sample data, but don't return immediately
+      # This allows us to still try to fetch additional years
+      fars_data <- sample_data
+      
+      # Save to cache directly for 2020
+      fars_2020_cache <- file.path(traffic_safety_dir, "fars_2020.rds")
+      saveRDS(sample_data, fars_2020_cache)
+      message(paste("Cached 2020 FARS data with", nrow(sample_data), "records."))
+      
+      # Mark 2020 as already processed
+      years <- years[years != 2020]
+    }
+  }
+  
   # Check for pre-downloaded data in the data directory
   predownloaded_path <- file.path(dirname(cache_dir), "traffic_safety/fars")
   if (dir.exists(predownloaded_path)) {
@@ -839,7 +869,13 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
         if (nrow(fars_data) > 0) {
           saveRDS(fars_data, fars_cache_file)
           message(paste("Saved processed FARS data from pre-downloaded files to cache with", nrow(fars_data), "records."))
-          return(fars_data)
+          
+          # Only return if we're not using other data sources (years is empty)
+          if (length(years) == 0) {
+            return(fars_data)
+          }
+          
+          # Otherwise continue processing other years through API
         }
       }
     }

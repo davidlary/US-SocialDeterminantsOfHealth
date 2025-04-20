@@ -1,84 +1,102 @@
-# Traffic Safety Data
+# Traffic Safety Data Module
 
-This directory contains county-level traffic safety data for the Social Determinants of Health (SDOH) pipeline.
+## Overview
+
+This directory contains traffic safety data from authoritative sources, focusing on traffic fatalities, injuries, and related risk factors at the county level across the United States. The data comes primarily from the National Highway Traffic Safety Administration's Fatality Analysis Reporting System (NHTSA FARS) and the CDC WONDER mortality database.
+
+## Directory Structure
+
+- `/traffic_safety/fars/` - NHTSA FARS data at county level (1975-present)
+- `/traffic_safety/cdc/` - CDC WONDER transportation mortality data (1970-present)
 
 ## Data Sources
 
-The traffic safety data is collected from multiple authoritative sources:
+### NHTSA Fatality Analysis Reporting System (FARS)
 
-1. **NHTSA's Fatality Analysis Reporting System (FARS)**
-   - Source: National Highway Traffic Safety Administration
-   - URL: https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars
-   - Coverage: 1975-present
-   - Description: Nationwide census providing data on all vehicle crashes in the United States that result in a fatality
+The FARS database is a nationwide census of fatal injuries in motor vehicle crashes. It contains detailed data on all vehicle crashes in the United States that occur on a public roadway and involve a fatality.
 
-2. **CDC WONDER - Multiple Cause of Death Database**
-   - Source: Centers for Disease Control and Prevention
-   - URL: https://wonder.cdc.gov/mcd.html
-   - Coverage: 1999-present
-   - Description: County-level mortality data including transportation-related deaths (ICD-10 codes V01-V99)
+- **Official Website**: https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars
+- **Data Format**: Annual county-level summaries with fatality counts
+- **Years Available**: 1975 to present
+- **Update Frequency**: Annual (with approximately 1-year lag)
 
-## Data Processing
+### CDC WONDER Multiple Cause of Death
 
-The script `fetch_traffic_safety_data.r` retrieves data from these sources and processes it for integration into the SDOH pipeline:
+CDC WONDER's Multiple Cause of Death data provides access to mortality information, including transportation-related deaths.
 
-1. Data is retrieved from APIs where available
-2. Local data files are used as backups
-3. Geographic data is standardized to county FIPS codes
-4. Interpolation is applied for missing years (when enabled)
-5. Data quality flags track the origin of each value
-6. Placeholder simulation can generate representative data when real data is unavailable
+- **Official Website**: https://wonder.cdc.gov/
+- **Data Format**: Annual county-level mortality data for transportation-related causes
+- **Years Available**: 1970 to present
+- **Update Frequency**: Annual (with approximately 1-2 year lag)
 
-## Variables
+## Variables Available
 
-The dataset includes the following key variables:
+| Variable | Description | Unit | Source |
+|----------|-------------|------|--------|
+| traffic_fatality_count | Total traffic fatalities | Count | NHTSA FARS |
+| traffic_fatality_rate_per_100k | Traffic fatality rate per 100,000 population | Rate | NHTSA FARS + Census |
+| traffic_injury_count | Traffic injuries | Count | NHTSA FARS |
+| traffic_injury_rate_per_100k | Traffic injury rate per 100,000 population | Rate | NHTSA FARS + Census |
+| ped_bike_fatality_count | Pedestrian/cyclist fatalities | Count | NHTSA FARS |
+| ped_bike_fatality_rate_per_100k | Pedestrian/cyclist fatality rate per 100,000 population | Rate | NHTSA FARS + Census |
+| dui_fatality_count | DUI-related fatalities | Count | NHTSA FARS |
+| dui_fatality_rate_per_100k | DUI-related fatality rate per 100,000 population | Rate | NHTSA FARS + Census |
+| speeding_fatality_count | Speeding-related fatalities | Count | NHTSA FARS |
+| speeding_fatality_rate_per_100k | Speeding-related fatality rate per 100,000 population | Rate | NHTSA FARS + Census |
+| transport_mortality_count | Total transport-related mortality | Count | CDC WONDER |
 
-| Variable | Description | Source |
-|----------|-------------|--------|
-| traffic_fatality_count | Total number of traffic-related deaths | FARS/CDC |
-| traffic_fatality_rate_per_100k | Traffic fatality rate per 100,000 population | Calculated |
-| traffic_injury_count | Total number of traffic-related injuries | FARS |
-| traffic_injury_rate_per_100k | Traffic injury rate per 100,000 population | Calculated |
-| ped_bike_fatality_count | Pedestrian and cyclist fatalities | FARS |
-| ped_bike_fatality_rate_per_100k | Pedestrian and cyclist fatality rate per 100,000 | Calculated |
-| dui_fatality_count | Alcohol-related traffic fatalities | FARS |
-| dui_fatality_rate_per_100k | Alcohol-related fatality rate per 100,000 | Calculated |
-| speeding_fatality_count | Speeding-related traffic fatalities | FARS |
-| speeding_fatality_rate_per_100k | Speeding-related fatality rate per 100,000 | Calculated |
+## Fallback Mechanism
 
-## Data Quality
+The traffic safety module includes robust fallback mechanisms to ensure data availability even when external APIs are unavailable:
 
-Each value includes a corresponding `_data_quality` field with one of the following values:
+1. **Primary API Access**: First attempts to fetch data from official APIs
+2. **Alternative APIs**: If primary API fails, tries alternative endpoints
+3. **Direct File Download**: If APIs are unavailable, attempts direct file downloads
+4. **Pre-downloaded Data**: Uses locally stored data files when all online sources fail
+5. **Sample Data**: As a last resort, uses realistic sample data based on real county-level statistics
 
-- `direct`: Data obtained directly from the source
-- `interpolated`: Data interpolated from surrounding years
-- `extrapolated`: Data extrapolated beyond available years
-- `simulated`: Synthetic data generated when real data unavailable
-- `imputed`: Values estimated using statistical methods
-- `NA`: Missing data
+## Usage in R
 
-## Usage
+The traffic safety data can be accessed through the main SDOH pipeline or directly using the traffic safety module:
 
-To access this data via the SDOH pipeline:
-
-1. Set `allow_interpolation = TRUE` to fill gaps in time series
-2. Set `allow_simulation = TRUE` to generate placeholder data when necessary
-3. Set `offline_mode = TRUE` to use only locally cached data
-
-Example:
 ```r
+# Load the module
+source("R/fetch_traffic_safety_data.r")
+
+# Fetch traffic safety data for specific years
 traffic_data <- fetch_traffic_safety_data(
-  years = 2000:2020,
+  years = 2010:2020,
   cache_dir = "data/cache",
   refresh_cache = FALSE,
   allow_interpolation = TRUE
 )
+
+# Access enhanced features through the integration module
+source("R/traffic_safety_integration.r")
+enhanced_data <- fetch_enhanced_traffic_safety_data(
+  years = 2010:2020,
+  cache_dir = "data/cache",
+  refresh_cache = FALSE,
+  generate_forecasts = TRUE,
+  spatial_analysis = TRUE
+)
 ```
 
-## References
+## Module Components
 
-1. National Highway Traffic Safety Administration. (2021). Fatality Analysis Reporting System (FARS). https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars
+The traffic safety module consists of several R scripts:
 
-2. Centers for Disease Control and Prevention. (2022). CDC WONDER: Multiple Cause of Death, 1999-2020. https://wonder.cdc.gov/mcd.html
+- **fetch_traffic_safety_data.r** - Main data fetcher for traffic safety data
+- **traffic_safety_integration.r** - Integration with the unified SDOH pipeline
+- **traffic_safety_cache.r** - Optimized caching system
+- **traffic_safety_validation.r** - Data quality validation
+- **traffic_safety_forecasting.r** - Time series forecasting with multiple models
+- **traffic_safety_geospatial.r** - Spatial analysis and mapping of traffic safety data
 
-3. Kochanek, K. D., Murphy, S. L., Xu, J., & Arias, E. (2019). Deaths: Final data for 2017. National Vital Statistics Reports, 68(9), 1-77.
+## Contact
+
+For questions or issues related to the traffic safety module, please contact David Lary (davidlary@me.com).
+
+## Last Updated
+
+April 19, 2025
