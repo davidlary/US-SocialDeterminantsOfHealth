@@ -14,6 +14,35 @@ jail_incarceration_rate,"County jail inmates per 100,000 population",Crime & Saf
 pretrial_detention_rate,"Pretrial detainees per 100,000 population",Crime & Safety,numeric_rate,Bureau of Justice Statistics,2000,2020,count/100k
 property_crime_rate,"Property crimes per 100,000 population",Crime & Safety,numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k
 violent_crime_rate,"Violent crimes per 100,000 population",Crime & Safety,numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k
+female_population,Female population,Demographic,numeric_count,US Census Bureau,2000,2023,people
+male_population,Male population,Demographic,numeric_count,US Census Bureau,2000,2023,people
+median_age,Median age of population,Demographic,numeric_years,US Census Bureau,2000,2023,years
+population_over_65,Population 65 years and older,Demographic,numeric_count,US Census Bureau,2000,2023,people
+population_under_18,Population under 18 years old,Demographic,numeric_count,US Census Bureau,2000,2023,people
+total_population,Total population,Demographic,numeric_count,US Census Bureau,2000,2023,people
+child_poverty_rate,Percentage of children below poverty level,Economic,numeric_percent,American Community Survey,2010,2023,percent
+gini_index,Gini index of income inequality,Economic,numeric_index,American Community Survey,2010,2023,index
+income_100k_150k,"Households with income $100,000 to $149,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_10k_15k,"Households with income $10,000 to $14,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_150k_200k,"Households with income $150,000 to $199,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_15k_25k,"Households with income $15,000 to $24,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_200k_plus,"Households with income $200,000 or more",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_25k_35k,"Households with income $25,000 to $34,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_35k_50k,"Households with income $35,000 to $49,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_50k_75k,"Households with income $50,000 to $74,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_75k_100k,"Households with income $75,000 to $99,999",Economic,numeric_percent,American Community Survey,2010,2023,percent
+income_less_10k,"Households with income less than $10,000",Economic,numeric_percent,American Community Survey,2010,2023,percent
+labor_force_participation,Labor force participation rate,Economic,numeric_percent,American Community Survey,2010,2023,percent
+mean_household_income,Mean household income,Economic,numeric_money,American Community Survey,2010,2023,dollars
+median_earnings,Median earnings for workers,Economic,numeric_money,American Community Survey,2010,2023,dollars
+median_female_earnings,Median earnings for female workers,Economic,numeric_money,American Community Survey,2010,2023,dollars
+median_household_income,Median household income,Economic,numeric_money,American Community Survey,2010,2023,dollars
+median_male_earnings,Median earnings for male workers,Economic,numeric_money,American Community Survey,2010,2023,dollars
+per_capita_income,Per capita income,Economic,numeric_money,American Community Survey,2010,2023,dollars
+poverty_rate,Percentage of population below poverty level,Economic,numeric_percent,American Community Survey,2010,2023,percent
+senior_poverty_rate,Percentage of seniors (65+) below poverty level,Economic,numeric_percent,American Community Survey,2010,2023,percent
+snap_benefits,Households receiving SNAP/Food Stamps,Economic,numeric_percent,American Community Survey,2010,2023,percent
+unemployment_rate,Unemployment rate,Economic,numeric_percent,American Community Survey,2010,2023,percent
 absolute_upward_mobility,Expected income rank for children from low-income families,Economic Factors,numeric_index,Opportunity Insights,2000,2018,percentile
 economic_distress_index,Composite index of economic distress,Economic Factors,numeric_index,Appalachian Regional Commission,2000,2023,index
 economic_typology,County economic typology,Economic Factors,categorical,USDA Economic Research Service,2000,2023,category
@@ -25,14 +54,28 @@ job_growth_rate,Annual job growth rate,Economic Factors,numeric_percent,Bureau o
 mean_commute_distance,Average commute distance,Economic Factors,numeric_distance,Opportunity Insights,2000,2018,miles
 persistent_child_poverty_county,Flag for counties with persistent child poverty,Economic Factors,binary,USDA Economic Research Service,2000,2023,binary
 persistent_poverty_county,Flag for counties with persistent poverty,Economic Factors,binary,USDA Economic Research Service,2000,2023,binary
+bachelors_or_higher,Population with bachelor's degree or higher,Education,numeric_count,American Community Survey,2010,2023,people
+bachelors_or_higher_pct,Percentage with bachelor's degree or higher,Education,numeric_percent,American Community Survey,2010,2023,percent
+enrolled_in_college,Population enrolled in college or graduate school,Education,numeric_count,American Community Survey,2010,2023,people
+enrolled_in_college_pct,Percentage enrolled in college or graduate school,Education,numeric_percent,American Community Survey,2010,2023,percent
+graduate_degree,Population with graduate or professional degree,Education,numeric_count,American Community Survey,2010,2023,people
+graduate_degree_pct,Percentage with graduate or professional degree,Education,numeric_percent,American Community Survey,2010,2023,percent
+high_school_graduation_rate,High school graduation rate,Education,numeric_percent,American Community Survey,2010,2023,percent
+high_school_only,Population with high school diploma only,Education,numeric_count,American Community Survey,2010,2023,people
+high_school_only_pct,Percentage with high school diploma only,Education,numeric_percent,American Community Survey,2010,2023,percent
+less_than_high_school,Population with less than high school education,Education,numeric_count,American Community Survey,2010,2023,people
+less_than_high_school_pct,Percentage with less than high school education,Education,numeric_percent,American Community Survey,2010,2023,percent
+some_college,Population with some college or associate's degree,Education,numeric_count,American Community Survey,2010,2023,people
+some_college_pct,Percentage with some college or associate's degree,Education,numeric_percent,American Community Survey,2010,2023,percent
 educational_opportunity_index,Measure of educational opportunity,Educational Resources & Quality,numeric_index,Stanford Education Data Archive,2009,2018,index
-high_school_graduation_rate,Four-year high school graduation rate,Educational Resources & Quality,numeric_percent,National Center for Education Statistics,2000,2022,percent
 math_achievement_gap,Achievement gap in math scores by race/ethnicity,Educational Resources & Quality,numeric_index,Stanford Education Data Archive,2009,2018,z-score
 per_pupil_expenditure,Per-pupil expenditure in public schools,Educational Resources & Quality,numeric_money,National Center for Education Statistics,2000,2022,dollars
 preschool_enrollment_rate,Percentage of 3-4 year-olds enrolled in preschool,Educational Resources & Quality,numeric_percent,National Center for Education Statistics,2000,2022,percent
 reading_achievement_gap,Achievement gap in reading scores by race/ethnicity,Educational Resources & Quality,numeric_index,Stanford Education Data Archive,2009,2018,z-score
 school_funding_equity,Ratio of funding in high-poverty vs. low-poverty districts,Educational Resources & Quality,numeric_ratio,National Center for Education Statistics,2000,2022,ratio
 student_teacher_ratio,Student-to-teacher ratio in public schools,Educational Resources & Quality,numeric_ratio,National Center for Education Statistics,2000,2022,ratio
+air_pollution_pm25,Fine particulate matter (PM2.5) concentration,Environmental,numeric_index,EPA / Census Bureau,2000,2023,µg/m³
+population_density,Population per square mile,Environmental,numeric_density,EPA / Census Bureau,2000,2023,people/sq mile
 air_quality_days_unhealthy,Number of days with unhealthy air quality,Environmental Health,numeric_count,EPA Air Quality System,2000,2023,days
 air_toxics_cancer_risk,Air toxics cancer risk,Environmental Health,numeric_rate,EPA Air Quality System,2000,2023,per million
 diesel_pm_concentration,Diesel particulate matter concentration,Environmental Health,numeric_index,EPA Air Quality System,2000,2023,μg/m³
@@ -64,6 +107,64 @@ snap_authorized_stores_per_1000,"SNAP-authorized retailers per 1,000 population"
 snap_benefits_redemption_per_capita,SNAP benefits redemption per capita,Food Environment & Access,numeric_money,USDA Food Environment Atlas,2010,2022,dollars
 supercenters_per_1000,"Number of supercenter and club stores per 1,000 population",Food Environment & Access,numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000
 wic_authorized_stores_per_1000,"WIC-authorized stores per 1,000 population",Food Environment & Access,numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000
+binge_drinking_pct,Percentage of adults reporting binge drinking,Health Behaviors,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent
+food_insecurity_pct,Percentage of population with food insecurity,Health Behaviors,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent
+insufficient_sleep_pct,Percentage of adults reporting insufficient sleep,Health Behaviors,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent
+physical_inactivity_pct,Percentage of adults reporting no leisure-time physical activity,Health Behaviors,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent
+smoking_pct,Percentage of adults who currently smoke,Health Behaviors,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent
+arthritis_pct,Percentage of adults with arthritis,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+asthma_pct,Percentage of adults with asthma,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+cancer_pct,Percentage of adults with cancer (excluding skin cancer),Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+copd_pct,Percentage of adults with COPD,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+coronary_heart_disease_pct,Percentage of adults with coronary heart disease,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+depression_pct,Percentage of adults with diagnosed depression,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+diabetes_pct,Percentage of adults with diagnosed diabetes,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+heart_disease_pct,Percentage of adults with heart disease,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+high_blood_pressure_pct,Percentage of adults with high blood pressure,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+high_cholesterol_pct,Percentage of adults with high cholesterol,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+infant_mortality_rate,"Infant mortality rate per 1,000 live births",Health Outcomes,numeric_rate,CDC PLACES / CDC WONDER,2010,2022,count/1000
+kidney_disease_pct,Percentage of adults with kidney disease,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+le_female_lower_ci,Lower confidence interval for female life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+le_female_upper_ci,Upper confidence interval for female life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+le_lower_ci,Lower confidence interval for life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+le_male_lower_ci,Lower confidence interval for male life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+le_male_upper_ci,Upper confidence interval for male life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+le_upper_ci,Upper confidence interval for life expectancy,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy,Life expectancy at birth,Health Outcomes,numeric_years,CDC PLACES / CDC WONDER,2010,2022,years
+life_expectancy_female,Female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_hispanic,Hispanic female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_multirace,Non-Hispanic multiracial female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_nhaian,Non-Hispanic AIAN female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_nhasian,Non-Hispanic Asian female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_nhb,Non-Hispanic Black female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_nhpi,Non-Hispanic Pacific Islander female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_female_nhw,Non-Hispanic White female life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_hispanic,Hispanic life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male,Male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_hispanic,Hispanic male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_multirace,Non-Hispanic multiracial male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_nhaian,Non-Hispanic AIAN male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_nhasian,Non-Hispanic Asian male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_nhb,Non-Hispanic Black male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_nhpi,Non-Hispanic Pacific Islander male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_male_nhw,Non-Hispanic White male life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_multirace,Non-Hispanic multiracial life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_nhaian,Non-Hispanic AIAN life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_nhasian,Non-Hispanic Asian life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_nhb,Non-Hispanic Black life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_nhpi,Non-Hispanic Pacific Islander life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+life_expectancy_nhw,Non-Hispanic White life expectancy at birth,Health Outcomes,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years
+obesity_pct,Percentage of adults with obesity (BMI ≥ 30),Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+poor_mental_health_pct,Percentage of adults reporting poor mental health,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+poor_physical_health_pct,Percentage of adults reporting poor physical health,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+stroke_pct,Percentage of adults who have had a stroke,Health Outcomes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent
+annual_checkup_pct,Percentage of adults who had an annual checkup,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
+dental_visit_pct,Percentage of adults who visited a dentist in the past year,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
+medicaid_pct,Percentage of population with Medicaid coverage,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
+medicare_pct,Percentage of population with Medicare coverage,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
+no_health_insurance_pct,Percentage of adults without any health insurance,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
+primary_care_physicians_per_100k,"Primary care physicians per 100,000 population",Healthcare,numeric_rate,CDC PLACES / SAHIE,2010,2022,count/100k
+uninsured_pct,Percentage of population without health insurance,Healthcare,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent
 ambulatory_care_sensitive_conditions,Rate of hospitalization for ambulatory care sensitive conditions,Healthcare Access,numeric_rate,CMS Geographic Variation Public Use File,2007,2021,rate
 dentists_per_100k,"Dentists per 100,000 population",Healthcare Access,numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k
 fqhc_access_pct,Percentage of population with access to Federally Qualified Health Centers,Healthcare Access,numeric_percent,HRSA Area Health Resources Files,2000,2023,percent
@@ -73,24 +174,79 @@ mental_health_providers_per_100k,"Mental health providers per 100,000 population
 pharmacies_per_100k,"Pharmacies per 100,000 population",Healthcare Access,numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k
 preventable_hospital_stays,"Preventable hospital stays per 100,000 Medicare enrollees",Healthcare Access,numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k
 preventive_services_pct,Percentage of Medicare beneficiaries receiving preventive services,Healthcare Access,numeric_percent,CMS Geographic Variation Public Use File,2007,2021,percent
-primary_care_physicians_per_100k,"Primary care physicians per 100,000 population",Healthcare Access,numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k
 eviction_filing_rate,Number of eviction filings per 100 renter homes,Housing,numeric_rate,Eviction Lab,2000,2018,rate
 eviction_rate,Number of evictions per 100 renter homes,Housing,numeric_rate,Eviction Lab,2000,2018,rate
 foreclosure_rate,"Foreclosures per 1,000 housing units",Housing,numeric_rate,Federal Reserve HMDA,2007,2023,rate
 high_cost_loans_pct,Percentage of loans that are high-cost,Housing,numeric_percent,Federal Reserve HMDA,2007,2023,percent
+homeownership_rate,Homeownership rate,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+housing_built_after_2010,Housing units built 2010 or later,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+housing_built_before_1940,Housing units built before 1940,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
 housing_problems_pct,Percentage of households with at least one housing problem,Housing,numeric_percent,HUD CHAS,2006,2020,percent
+housing_without_kitchen,Housing units lacking complete kitchen facilities,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+housing_without_plumbing,Housing units lacking complete plumbing facilities,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
 low_income_renters_affordable_units_ratio,Ratio of affordable units to low-income renters,Housing,numeric_ratio,HUD CHAS,2006,2020,ratio
+median_home_value,Median home value,Housing,numeric_money,American Community Survey / HUD CHAS,2010,2023,dollars
+median_rent,Median gross rent,Housing,numeric_money,American Community Survey / HUD CHAS,2010,2023,dollars
 mortgage_denial_rate,Percentage of mortgage applications denied,Housing,numeric_percent,Federal Reserve HMDA,2007,2023,percent
-overcrowded_housing_pct,Percentage of housing units with >1 person per room,Housing,numeric_percent,HUD CHAS,2006,2020,percent
-rent_burden_pct,Percentage of income spent on rent (median),Housing,numeric_percent,Eviction Lab,2000,2018,percent
+occupied_housing_units,Occupied housing units,Housing,numeric_count,American Community Survey / HUD CHAS,2010,2023,units
+overcrowded_housing_pct,Percentage of housing units with more than 1 person per room,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+rent_burden_pct,Percentage of household income spent on rent,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+rental_rate,Rental rate,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+severe_housing_cost_burden,Households with severe housing cost burden (>50% of income),Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
+severe_housing_problems,Households with at least one severe housing problem,Housing,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent
 severely_cost_burdened_owners_pct,Percentage of owner households spending >50% of income on housing,Housing,numeric_percent,HUD CHAS,2006,2020,percent
 severely_cost_burdened_renters_pct,Percentage of renter households spending >50% of income on housing,Housing,numeric_percent,HUD CHAS,2006,2020,percent
+total_housing_units,Total housing units,Housing,numeric_count,American Community Survey / HUD CHAS,2010,2023,units
+vacant_housing_units,Vacant housing units,Housing,numeric_count,American Community Survey / HUD CHAS,2010,2023,units
+aian_pct,American Indian and Alaska Native alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+aian_population,American Indian and Alaska Native alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+asian_pct,Asian alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+asian_population,Asian alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+black_pct,Black or African American alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+black_population,Black or African American alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+hispanic_pct,Hispanic or Latino percentage (any race),Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+hispanic_population,Hispanic or Latino population (any race),Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+multiracial_pct,Two or more races percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+multiracial_population,Two or more races population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+nhpi_pct,Native Hawaiian and Other Pacific Islander alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+nhpi_population,Native Hawaiian and Other Pacific Islander alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+other_race_pct,Some other race alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+other_race_population,Some other race alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+white_pct,White alone percentage,Race/Ethnicity,numeric_percent,US Census Bureau,2000,2023,percent
+white_population,White alone population,Race/Ethnicity,numeric_count,US Census Bureau,2000,2023,people
+civilian_veterans,Percentage of civilian population who are veterans,Social,numeric_percent,American Community Survey,2010,2023,percent
+disconnected_youth,Percentage of teens and young adults (16-24) neither working nor in school,Social,numeric_percent,American Community Survey,2010,2023,percent
+households_with_computer,Percentage of households with a computer,Social,numeric_percent,American Community Survey,2010,2023,percent
+households_with_internet,Percentage of households with broadband internet subscription,Social,numeric_percent,American Community Survey,2010,2023,percent
+single_parent_households_pct,Percentage of single-parent households,Social,numeric_percent,American Community Survey,2010,2023,percent
 nonprofit_organizations_per_10k,"Nonprofit organizations per 10,000 population",Social Cohesion & Capital,numeric_rate,County Health Rankings,2014,2023,count/10k
 political_competition_index,Index measuring political competition,Social Cohesion & Capital,numeric_index,MIT Election Data and Science Lab,2000,2022,index
 religious_congregation_rate,"Religious congregations per 10,000 population",Social Cohesion & Capital,numeric_rate,County Health Rankings,2014,2023,count/10k
 social_association_rate,"Social associations per 10,000 population",Social Cohesion & Capital,numeric_rate,County Health Rankings,2014,2023,count/10k
 voter_registration_rate,Voter registration as percentage of eligible population,Social Cohesion & Capital,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent
 voter_turnout_rate,Voter turnout rate in general elections,Social Cohesion & Capital,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent
+alcohol_impaired_fatalities,Alcohol-impaired driving fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+alcohol_impaired_fatality_rate,"Alcohol-impaired fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+bicycle_fatalities,Bicycle traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+bicycle_fatality_rate,"Bicycle fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+motorcycle_fatalities,Motorcycle traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+motorcycle_fatality_rate,"Motorcycle fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+pedestrian_fatalities,Pedestrian traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+pedestrian_fatality_rate,"Pedestrian fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+speeding_related_fatalities,Speeding-related traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+speeding_related_fatality_rate,"Speeding-related fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+traffic_fatalities,Total traffic fatalities,Traffic Safety,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count
+traffic_fatality_rate,"Traffic fatalities per 100,000 population",Traffic Safety,numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k
+commute_bicycle,Workers commuting by bicycle,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_car_alone,Workers commuting by driving alone,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_carpool,Workers commuting by carpooling,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_long_pct,Percentage of workers with commute >30 minutes,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_other,Workers commuting by other means,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_public_transit,Workers commuting by public transportation,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_walk,Workers commuting by walking,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+commute_work_at_home,Workers working at home,Transportation,numeric_percent,American Community Survey,2010,2023,percent
+mean_commute_time,Mean commute time (minutes),Transportation,numeric_time,American Community Survey,2010,2023,minutes
+no_vehicle_households_pct,Percentage of households with no vehicle available,Transportation,numeric_percent,American Community Survey,2010,2023,percent
 public_transit_trips_per_capita,Public transit trips per capita,Transportation,numeric_rate,National Transit Database,2000,2022,count
 transit_access_jobs,Number of jobs accessible by transit within 30 minutes,Transportation,numeric_count,All Transit Database,2012,2022,count
 transit_connectivity_index,Measure of transit connectivity,Transportation,numeric_index,All Transit Database,2012,2022,index
