@@ -182,7 +182,14 @@ This documentation provides comprehensive details about all data sources used in
 | stroke_pct | Stroke history | CDC PLACES | 2016-present | percent |
 | annual_checkup_pct | Annual checkup | CDC PLACES | 2016-present | percent |
 | dental_visit_pct | Dental visit in past year | CDC PLACES | 2016-present | percent |
-| life_expectancy | Life expectancy at birth | IHME | 1990-present | years |
+| life_expectancy | Life expectancy at birth (all races/genders combined) | IHME | 2000-2019 | years |
+| life_expectancy_female | Female life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_male | Male life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_latino | Latino life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_black | Black life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_white | White life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_aian | American Indian/Alaska Native life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_api | Asian/Pacific Islander life expectancy | IHME | 2000-2019 | years |
 | years_potential_life_lost | Years of potential life lost before age 75 | CDC WONDER | 1990-present | years per 100k |
 | age_adjusted_mortality | Age-adjusted mortality rate | CDC WONDER | 1990-present | rate per 100k |
 | premature_death_rate | Premature death rate | CDC WONDER | 1990-present | rate per 100k |

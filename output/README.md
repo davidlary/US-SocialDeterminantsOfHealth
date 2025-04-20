@@ -1,6 +1,6 @@
 # Unified Social Determinants of Health County-Level Dataset
 
-Generated on: 2025-04-20 00:23:17
+Generated on: 2025-04-20 04:48:08
 
 ## Overview
 
@@ -9,6 +9,7 @@ This dataset combines county-level data on social determinants of health from mu
 - **U.S. Census Bureau** (Decennial Census, American Community Survey, Population Estimates Program)
 - **CDC PLACES** (county-level health indicators)
 - **IPUMS NHGIS** (harmonized time series data)
+- **IHME** (Institute for Health Metrics and Evaluation, life expectancy data)
 - **USDA Food Environment Atlas** (food access measures)
 - **EPA** (environmental quality measures)
 - **HUD** (housing statistics)
