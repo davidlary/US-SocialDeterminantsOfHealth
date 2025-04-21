@@ -40,54 +40,185 @@ if (!exists("log_message")) {
 #' @param use_cache Whether to use cached data if available
 #' @return A dataframe with Census data
 get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache = TRUE) {
-  # For the modular demo version, we'll just return a simulated dataset
-  log_message("Using simulated Census data (demo mode)",
-             level = "INFO", show_console = TRUE)
+  # Define cache file path
+  cache_dir <- "data/cache"
+  cache_file <- file.path(cache_dir, "census_data.rds")
   
-  # Create simulated Census data
-  counties <- data.frame(
-    geoid = sprintf("%05d", 1:3000),
-    name = paste("County", 1:3000),
-    state_fips = rep(sprintf("%02d", 1:50), each = 60),
-    state_name = rep(state.name, each = 60)[1:3000]
+  # Check if cache exists and we can use it
+  if (file.exists(cache_file) && use_cache && !refresh_cache) {
+    log_message("Loading Census data from cache...",
+               level = "INFO", show_console = TRUE)
+    return(readRDS(cache_file))
+  }
+  
+  # Check for pre-downloaded Census data files
+  census_dirs <- c(
+    "data/census_acs",
+    "data/census_decennial",
+    "data/census_pep",
+    "data/cache/census"
   )
   
-  # Add key Census variables from the crosswalk
-  census_vars <- crosswalk %>%
-    filter(grepl("American Community Survey|US Census Bureau", source)) %>%
-    pull(variable_name)
-  
-  # Create data for each year
-  census_data <- list()
-  
-  for (year in years) {
-    if (year >= 2000 && year <= 2023) {  # Only include realistic years
-      year_data <- counties
-      year_data$year <- year
+  # Look for CSV files with Census data
+  census_files <- list()
+  for (dir in census_dirs) {
+    if (dir.exists(dir)) {
+      # Look for CSV files with Census data
+      files <- list.files(
+        path = dir,
+        pattern = "acs.*\\.csv$|dec.*\\.csv$|pep.*\\.csv$|census.*\\.csv$",
+        full.names = TRUE,
+        recursive = TRUE,
+        ignore.case = TRUE
+      )
       
-      # Add some sample data for key variables
-      for (var in census_vars) {
-        # Generate random values appropriate for this variable
-        if (grepl("population", var)) {
-          year_data[[var]] <- round(runif(nrow(year_data), 1000, 1000000))
-        } else if (grepl("income", var)) {
-          year_data[[var]] <- round(runif(nrow(year_data), 30000, 150000))
-        } else if (grepl("rate|pct", var)) {
-          year_data[[var]] <- round(runif(nrow(year_data), 1, 30), 1)
-        } else {
-          year_data[[var]] <- round(runif(nrow(year_data), 0, 100))
-        }
-      }
-      
-      census_data[[as.character(year)]] <- year_data
+      # Add to the list
+      census_files <- c(census_files, files)
     }
   }
   
-  # Combine all years
-  combined_census_data <- do.call(rbind, census_data)
+  # Check if we found any files
+  if (length(census_files) == 0) {
+    log_message("ERROR: No Census data files found. Please download Census data.",
+               level = "ERROR", show_console = TRUE)
+    log_message("Required files should be in one of the following directories:",
+               level = "ERROR", show_console = TRUE)
+    log_message(paste(census_dirs, collapse = ", "),
+               level = "ERROR", show_console = TRUE)
+    log_message("File names should include 'acs', 'dec', or 'pep' with a CSV extension.",
+               level = "ERROR", show_console = TRUE)
+    
+    # Return empty dataframe with proper structure
+    return(data.frame(
+      geoid = character(0),
+      name = character(0),
+      state_fips = character(0),
+      state_name = character(0),
+      year = integer(0)
+    ))
+  }
   
-  log_message(paste("Simulated Census data created with", nrow(combined_census_data), "rows"),
+  # Process files to create the combined dataset
+  log_message(paste("Found", length(census_files), "Census data files. Processing..."),
              level = "INFO", show_console = TRUE)
+  
+  # Initialize list for each file's data
+  file_data_list <- list()
+  
+  # Process each file
+  for (file in census_files) {
+    log_message(paste("Processing Census file:", basename(file)),
+               level = "INFO", show_console = TRUE)
+    
+    # Extract year and type from filename
+    filename <- basename(file)
+    year_match <- regexpr("_[0-9]{4}", filename)
+    
+    # Figure out which type of Census data
+    data_type <- if (grepl("acs", filename, ignore.case = TRUE)) {
+      "ACS"
+    } else if (grepl("dec", filename, ignore.case = TRUE)) {
+      "Decennial"
+    } else if (grepl("pep", filename, ignore.case = TRUE)) {
+      "PEP"
+    } else {
+      "Unknown"
+    }
+    
+    # Extract year if possible
+    file_year <- if (year_match > 0) {
+      as.numeric(substr(filename, year_match + 1, year_match + 4))
+    } else {
+      NA_integer_
+    }
+    
+    # Only process if year is in the requested range
+    if (!is.na(file_year) && file_year %in% years) {
+      # Read the file
+      file_data <- tryCatch({
+        read.csv(file, stringsAsFactors = FALSE)
+      }, error = function(e) {
+        log_message(paste("Error reading file:", e$message),
+                   level = "ERROR", show_console = TRUE)
+        return(NULL)
+      })
+      
+      # Process if we successfully read the file
+      if (!is.null(file_data) && nrow(file_data) > 0) {
+        # Ensure we have standard column names
+        # Look for FIPS code
+        if (!"geoid" %in% names(file_data)) {
+          # Look for alternate column names
+          fips_cols <- grep("fips|geoid|county_code|state_county", 
+                           names(file_data), ignore.case = TRUE, value = TRUE)
+          
+          if (length(fips_cols) > 0) {
+            # Rename the first match to geoid
+            names(file_data)[names(file_data) == fips_cols[1]] <- "geoid"
+          } else if ("state" %in% names(file_data) && "county" %in% names(file_data)) {
+            # Construct FIPS from state and county
+            file_data$geoid <- sprintf("%02d%03d", 
+                                     as.numeric(file_data$state), 
+                                     as.numeric(file_data$county))
+          } else {
+            # Can't determine FIPS code
+            log_message(paste("Cannot determine FIPS code in file:", filename),
+                       level = "WARN", show_console = TRUE)
+            # Skip this file
+            next
+          }
+        }
+        
+        # Ensure GEOID is standardized
+        file_data$geoid <- sprintf("%05d", as.numeric(file_data$geoid))
+        
+        # Add year if missing
+        if (!"year" %in% names(file_data)) {
+          file_data$year <- file_year
+        }
+        
+        # Add data source
+        file_data$data_source <- paste("US Census Bureau", data_type)
+        file_data$data_quality <- "direct"
+        
+        # Add to list
+        file_data_list[[basename(file)]] <- file_data
+      }
+    }
+  }
+  
+  # Combine all data
+  if (length(file_data_list) == 0) {
+    log_message("ERROR: No valid Census data found for requested years.",
+               level = "ERROR", show_console = TRUE)
+    
+    # Return empty dataframe with proper structure
+    return(data.frame(
+      geoid = character(0),
+      name = character(0),
+      state_fips = character(0),
+      state_name = character(0),
+      year = integer(0)
+    ))
+  }
+  
+  # Combine all files
+  combined_census_data <- bind_rows(file_data_list)
+  
+  # If we have Census data, save to cache
+  if (nrow(combined_census_data) > 0) {
+    log_message(paste("Saving combined Census data with", 
+                     nrow(combined_census_data), "rows to cache..."),
+               level = "INFO", show_console = TRUE)
+    
+    # Make sure cache directory exists
+    if (!dir.exists(cache_dir)) {
+      dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    # Save to cache
+    saveRDS(combined_census_data, cache_file)
+  }
   
   return(combined_census_data)
 }
@@ -103,32 +234,97 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
 #' @param crosswalk Variable crosswalk
 #' @return A processed dataset with all variables
 get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
-  # This function simulates a processed dataset for the example
-  # In the actual implementation, it would process and combine data from different sources
-  
   log_message("Processing and combining data from all sources...",
              level = "INFO", show_console = TRUE)
   
-  if (is.null(census_data)) {
-    # Create a basic dataset with county IDs and years
-    counties <- data.frame(
-      geoid = sprintf("%05d", 1:3000),
-      name = paste("County", 1:3000),
-      state_fips = rep(sprintf("%02d", 1:50), each = 60),
-      state_name = rep(state.name[1:50], each = 60)
-    )
+  # Create a base dataset with county IDs and years
+  if (is.null(census_data) || nrow(census_data) == 0) {
+    log_message("WARNING: No Census data available. Creating base template only.",
+               level = "WARN", show_console = TRUE)
     
-    # Create a dataset with all years and counties
-    years_df <- expand.grid(
-      geoid = counties$geoid,
-      year = years
-    )
+    # Try to get county data from shapefiles or any other source
+    counties <- NULL
     
-    # Merge counties info
-    full_data <- merge(years_df, counties, by = "geoid")
+    # Check in shapefiles directory
+    shapefile_index_path <- "data/shapefiles/shapefile_index.csv"
+    if (file.exists(shapefile_index_path)) {
+      log_message("Trying to extract county information from shapefile index...",
+                 level = "INFO", show_console = TRUE)
+      shapefile_index <- read.csv(shapefile_index_path, stringsAsFactors = FALSE)
+      
+      if ("geoid" %in% names(shapefile_index) && "name" %in% names(shapefile_index)) {
+        counties <- shapefile_index %>%
+          select(geoid, name) %>%
+          distinct()
+        
+        # Extract state FIPS from county FIPS
+        counties$state_fips <- substr(counties$geoid, 1, 2)
+        
+        # Add state names
+        # First create a state lookup
+        state_lookup <- data.frame(
+          state_fips = sprintf("%02d", 1:56),
+          state_name = c(state.name, "District of Columbia", 
+                        "Puerto Rico", "Virgin Islands", 
+                        "Guam", "American Samoa", "Northern Mariana Islands"),
+          stringsAsFactors = FALSE
+        )
+        
+        # Join to get state names
+        counties <- counties %>%
+          left_join(state_lookup, by = "state_fips")
+      }
+    }
+    
+    # If still no county data, create minimal template
+    if (is.null(counties) || nrow(counties) == 0) {
+      log_message("WARNING: Could not find any county information. Creating minimal template.",
+                 level = "WARN", show_console = TRUE)
+      
+      # Create empty dataframe
+      counties <- data.frame(
+        geoid = character(0),
+        name = character(0),
+        state_fips = character(0),
+        state_name = character(0),
+        stringsAsFactors = FALSE
+      )
+    }
+    
+    if (nrow(counties) > 0) {
+      # Create a dataset with all years and counties
+      years_df <- expand.grid(
+        geoid = counties$geoid,
+        year = years,
+        stringsAsFactors = FALSE
+      )
+      
+      # Merge counties info
+      full_data <- merge(years_df, counties, by = "geoid")
+      
+      log_message(paste("Created base template with", nrow(full_data), 
+                       "rows for", length(unique(counties$geoid)), 
+                       "counties and", length(years), "years."),
+                 level = "INFO", show_console = TRUE)
+    } else {
+      # No counties - create empty dataset with correct columns
+      full_data <- data.frame(
+        geoid = character(0),
+        year = integer(0),
+        name = character(0),
+        state_fips = character(0),
+        state_name = character(0),
+        stringsAsFactors = FALSE
+      )
+      
+      log_message("WARNING: Empty dataset created (no counties found).",
+                 level = "WARN", show_console = TRUE)
+    }
   } else {
     # Use the Census data as the base
     full_data <- census_data
+    log_message(paste("Using Census data as base with", nrow(full_data), "rows."),
+               level = "INFO", show_console = TRUE)
   }
   
   # First, try to get traffic safety data and add it to our dataset
@@ -141,7 +337,8 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
       ts_data <- get_traffic_safety_data(years = years)
       
       # Check if ts_data has the required geoid and year columns for joining
-      if (is.data.frame(ts_data) && all(c("geoid", "year") %in% names(ts_data))) {
+      if (is.data.frame(ts_data) && nrow(ts_data) > 0 && 
+          all(c("geoid", "year") %in% names(ts_data))) {
         # Get list of traffic safety variables
         ts_vars <- intersect(
           names(ts_data),
@@ -158,13 +355,25 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
           log_message(paste("Found", length(ts_vars), "traffic safety variables to add"),
                      level = "INFO", show_console = TRUE)
           
+          # Add data quality columns if they exist
+          quality_vars <- character(0)
+          for (var in ts_vars) {
+            qual_col <- paste0(var, "_data_quality")
+            if (qual_col %in% names(ts_data)) {
+              quality_vars <- c(quality_vars, qual_col)
+            }
+          }
+          
           # Prepare data for merge
-          ts_merge_data <- ts_data[, c("geoid", "year", ts_vars)]
+          ts_merge_data <- ts_data[, c("geoid", "year", ts_vars, quality_vars)]
           
           # Merge with full_data
           full_data <- merge(full_data, ts_merge_data, 
                            by = c("geoid", "year"), 
                            all.x = TRUE)
+          
+          log_message(paste("Added traffic safety data to dataset."),
+                     level = "INFO", show_console = TRUE)
         } else {
           log_message("No traffic safety variables found in data",
                      level = "WARN", show_console = TRUE)
@@ -182,32 +391,25 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
                level = "WARN", show_console = TRUE)
   }
   
-  # Add missing variables from the crosswalk
-  log_message("Adding remaining variables from crosswalk...",
+  # Add missing variables - BUT NOT WITH SIMULATED DATA
+  log_message("Marking missing variables...",
              level = "INFO", show_console = TRUE)
   
-  # Add more variables not already in the data
+  # Go through all variables in the crosswalk
   for (var in crosswalk$variable_name) {
+    # Check if this variable exists in the data
     if (!var %in% names(full_data)) {
-      # Generate random values appropriate for this variable
-      if (grepl("population", var)) {
-        full_data[[var]] <- round(runif(nrow(full_data), 1000, 1000000))
-      } else if (grepl("income|earnings", var)) {
-        full_data[[var]] <- round(runif(nrow(full_data), 30000, 150000))
-      } else if (grepl("rate|pct", var)) {
-        full_data[[var]] <- round(runif(nrow(full_data), 1, 30), 1)
-      } else if (grepl("fatalities|deaths", var)) {
-        full_data[[var]] <- round(runif(nrow(full_data), 0, 500))
-      } else if (grepl("expectancy", var)) {
-        full_data[[var]] <- round(runif(nrow(full_data), 65, 85), 1)
-      } else {
-        full_data[[var]] <- round(runif(nrow(full_data), 0, 100))
-      }
+      # Add the column but set to NA (not simulated data)
+      full_data[[var]] <- NA
+      
+      # Add data quality flag showing it's missing
+      qual_col <- paste0(var, "_data_quality")
+      full_data[[qual_col]] <- "missing"
+      
+      # Log that this variable is missing
+      log_message(paste("Variable", var, "is not available in the dataset. Marked as missing."),
+                 level = "INFO", show_console = TRUE)
     }
-    
-    # Add interpolation flags for some data points
-    interp_col <- paste0(var, "_interpolated")
-    full_data[[interp_col]] <- sample(c(TRUE, FALSE), nrow(full_data), replace = TRUE, prob = c(0.2, 0.8))
   }
   
   # Add IHME life expectancy data (using actual data files)
@@ -621,6 +823,49 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
         quality_col <- paste0(var, "_data_quality")
         full_data[[quality_col]] <- "missing"
       }
+    }
+  }
+  
+  # Count available data by quality
+  if (nrow(full_data) > 0) {
+    # Count variables with direct, interpolated, and missing data
+    qual_cols <- grep("_data_quality$", names(full_data), value = TRUE)
+    
+    if (length(qual_cols) > 0) {
+      # Count number of variables by data quality
+      quality_counts <- list(
+        direct = 0,
+        interpolated = 0,
+        extrapolated = 0,
+        missing = 0
+      )
+      
+      for (col in qual_cols) {
+        # Get variable name
+        var_name <- sub("_data_quality$", "", col)
+        
+        # Count by quality type
+        if (any(full_data[[col]] == "direct", na.rm = TRUE)) {
+          quality_counts$direct <- quality_counts$direct + 1
+        } else if (any(full_data[[col]] == "interpolated", na.rm = TRUE)) {
+          quality_counts$interpolated <- quality_counts$interpolated + 1
+        } else if (any(full_data[[col]] == "extrapolated", na.rm = TRUE)) {
+          quality_counts$extrapolated <- quality_counts$extrapolated + 1
+        } else if (any(full_data[[col]] == "missing", na.rm = TRUE) || 
+                  all(is.na(full_data[[var_name]]))) {
+          quality_counts$missing <- quality_counts$missing + 1
+        }
+      }
+      
+      log_message("Data quality summary:", level = "INFO", show_console = TRUE)
+      log_message(paste(" - Direct data:", quality_counts$direct, "variables"),
+                 level = "INFO", show_console = TRUE)
+      log_message(paste(" - Interpolated data:", quality_counts$interpolated, "variables"),
+                 level = "INFO", show_console = TRUE)
+      log_message(paste(" - Extrapolated data:", quality_counts$extrapolated, "variables"),
+                 level = "INFO", show_console = TRUE)
+      log_message(paste(" - Missing data:", quality_counts$missing, "variables"),
+                 level = "INFO", show_console = TRUE)
     }
   }
   
