@@ -29,6 +29,16 @@ if (!exists("log_message")) {
   }
 }
 
+# Helper function to handle log_message with different parameter sets
+safe_log_message <- function(message, level = "INFO") {
+  # Check if the log_message function has a show_console parameter
+  if ("show_console" %in% names(formals(log_message))) {
+    log_message(message, level = level, show_console = TRUE)
+  } else {
+    log_message(message, level = level)
+  }
+}
+
 #' Fetch Census data for counties
 #'
 #' This function fetches data from the U.S. Census Bureau's API
@@ -46,8 +56,7 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
   
   # Check if cache exists and we can use it
   if (file.exists(cache_file) && use_cache && !refresh_cache) {
-    log_message("Loading Census data from cache...",
-               level = "INFO", show_console = TRUE)
+    safe_log_message("Loading Census data from cache...", level = "INFO")
     return(readRDS(cache_file))
   }
   
@@ -79,14 +88,14 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
   
   # Check if we found any files
   if (length(census_files) == 0) {
-    log_message("ERROR: No Census data files found. Please download Census data.",
-               level = "ERROR", show_console = TRUE)
-    log_message("Required files should be in one of the following directories:",
-               level = "ERROR", show_console = TRUE)
-    log_message(paste(census_dirs, collapse = ", "),
-               level = "ERROR", show_console = TRUE)
-    log_message("File names should include 'acs', 'dec', or 'pep' with a CSV extension.",
-               level = "ERROR", show_console = TRUE)
+    safe_log_message("ERROR: No Census data files found. Please download Census data.",
+               level = "ERROR")
+    safe_log_message("Required files should be in one of the following directories:",
+               level = "ERROR")
+    safe_log_message(paste(census_dirs, collapse = ", "),
+               level = "ERROR")
+    safe_log_message("File names should include 'acs', 'dec', or 'pep' with a CSV extension.",
+               level = "ERROR")
     
     # Return empty dataframe with proper structure
     return(data.frame(
@@ -99,16 +108,16 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
   }
   
   # Process files to create the combined dataset
-  log_message(paste("Found", length(census_files), "Census data files. Processing..."),
-             level = "INFO", show_console = TRUE)
+  safe_log_message(paste("Found", length(census_files), "Census data files. Processing..."),
+             level = "INFO")
   
   # Initialize list for each file's data
   file_data_list <- list()
   
   # Process each file
   for (file in census_files) {
-    log_message(paste("Processing Census file:", basename(file)),
-               level = "INFO", show_console = TRUE)
+    safe_log_message(paste("Processing Census file:", basename(file)),
+               level = "INFO")
     
     # Extract year and type from filename
     filename <- basename(file)
@@ -138,8 +147,8 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
       file_data <- tryCatch({
         read.csv(file, stringsAsFactors = FALSE)
       }, error = function(e) {
-        log_message(paste("Error reading file:", e$message),
-                   level = "ERROR", show_console = TRUE)
+        safe_log_message(paste("Error reading file:", e$message),
+                   level = "ERROR")
         return(NULL)
       })
       
@@ -162,8 +171,8 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
                                      as.numeric(file_data$county))
           } else {
             # Can't determine FIPS code
-            log_message(paste("Cannot determine FIPS code in file:", filename),
-                       level = "WARN", show_console = TRUE)
+            safe_log_message(paste("Cannot determine FIPS code in file:", filename),
+                       level = "WARN")
             # Skip this file
             next
           }
@@ -189,8 +198,8 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
   
   # Combine all data
   if (length(file_data_list) == 0) {
-    log_message("ERROR: No valid Census data found for requested years.",
-               level = "ERROR", show_console = TRUE)
+    safe_log_message("ERROR: No valid Census data found for requested years.",
+               level = "ERROR")
     
     # Return empty dataframe with proper structure
     return(data.frame(
@@ -207,9 +216,9 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
   
   # If we have Census data, save to cache
   if (nrow(combined_census_data) > 0) {
-    log_message(paste("Saving combined Census data with", 
+    safe_log_message(paste("Saving combined Census data with", 
                      nrow(combined_census_data), "rows to cache..."),
-               level = "INFO", show_console = TRUE)
+               level = "INFO")
     
     # Make sure cache directory exists
     if (!dir.exists(cache_dir)) {
@@ -669,7 +678,7 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
             # Process overall (both genders) data
             race_both <- both_data %>% 
               filter(race_ethnicity == race_code) %>%
-              select(geoid, year, life_expectancy, lower, upper)
+              select(geoid, year, life_expectancy, le_lower_ci, le_upper_ci)
             
             # Define variable name based on race
             if (race_code == "all") {
@@ -684,13 +693,13 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
             
             # Rename columns
             names(race_both)[names(race_both) == "life_expectancy"] <- var_name
-            names(race_both)[names(race_both) == "lower"] <- lower_name
-            names(race_both)[names(race_both) == "upper"] <- upper_name
+            names(race_both)[names(race_both) == "le_lower_ci"] <- lower_name
+            names(race_both)[names(race_both) == "le_upper_ci"] <- upper_name
             
             # Process male data
             race_male <- male_data %>% 
               filter(race_ethnicity == race_code) %>%
-              select(geoid, year, life_expectancy, lower, upper)
+              select(geoid, year, life_expectancy, le_lower_ci, le_upper_ci)
             
             # Define male variable names
             if (race_code == "all") {
@@ -705,13 +714,13 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
             
             # Rename male columns
             names(race_male)[names(race_male) == "life_expectancy"] <- male_var_name
-            names(race_male)[names(race_male) == "lower"] <- male_lower_name
-            names(race_male)[names(race_male) == "upper"] <- male_upper_name
+            names(race_male)[names(race_male) == "le_lower_ci"] <- male_lower_name
+            names(race_male)[names(race_male) == "le_upper_ci"] <- male_upper_name
             
             # Process female data
             race_female <- female_data %>% 
               filter(race_ethnicity == race_code) %>%
-              select(geoid, year, life_expectancy, lower, upper)
+              select(geoid, year, life_expectancy, le_lower_ci, le_upper_ci)
             
             # Define female variable names
             if (race_code == "all") {
@@ -726,8 +735,8 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
             
             # Rename female columns
             names(race_female)[names(race_female) == "life_expectancy"] <- female_var_name
-            names(race_female)[names(race_female) == "lower"] <- female_lower_name
-            names(race_female)[names(race_female) == "upper"] <- female_upper_name
+            names(race_female)[names(race_female) == "le_lower_ci"] <- female_lower_name
+            names(race_female)[names(race_female) == "le_upper_ci"] <- female_upper_name
             
             # Merge all data for this race
             result <- merge(race_both, race_male, by = c("geoid", "year"), all = TRUE)
