@@ -210,31 +210,270 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
     full_data[[interp_col]] <- sample(c(TRUE, FALSE), nrow(full_data), replace = TRUE, prob = c(0.2, 0.8))
   }
   
-  # Add IHME life expectancy data (simulated)
+  # Add IHME life expectancy data (using actual data files)
   log_message("Adding IHME life expectancy data...",
              level = "INFO", show_console = TRUE)
   
-  ihme_vars <- crosswalk$variable_name[grepl("IHME", crosswalk$source)]
+  ihme_vars <- crosswalk$variable_name[crosswalk$source == "IHME (Institute for Health Metrics and Evaluation)"]
   if (length(ihme_vars) > 0) {
-    for (var in ihme_vars) {
-      if (!var %in% names(full_data)) {
-        # Generate random life expectancy values
-        base_expectancy <- 75 + runif(nrow(full_data), -5, 10)
+    # Define the IHME data directory
+    ihme_dir <- "data/ihme/CSV"
+    
+    # Check if the directory exists
+    if (dir.exists(ihme_dir)) {
+      # Get IHME CSV files
+      ihme_files <- list.files(ihme_dir, pattern = "\\.CSV$", full.names = TRUE)
+      
+      if (length(ihme_files) > 0) {
+        log_message(paste("Found", length(ihme_files), "IHME data files"),
+                   level = "INFO", show_console = TRUE)
         
-        # Adjust based on specific demographic patterns
-        if (grepl("female", var)) {
-          # Females typically have higher life expectancy
-          expectancy <- base_expectancy + runif(nrow(full_data), 2, 5)
-        } else if (grepl("male", var)) {
-          # Males typically have lower life expectancy
-          expectancy <- base_expectancy - runif(nrow(full_data), 2, 5)
-        } else {
-          expectancy <- base_expectancy
+        # Create a dataframe to store all IHME life expectancy data
+        ihme_data <- NULL
+        
+        # Process each file
+        for (file in ihme_files) {
+          tryCatch({
+            # Extract file information
+            filename <- basename(file)
+            
+            # Parse the filename to extract year, gender, and type
+            # Format: IHME_USA_LE_COUNTY_RACE_ETHN_2000_2019_LT_YYYY_GENDER_YYYYMMDD.CSV
+            year_match <- regexpr("_LT_(\\d{4})_", filename)
+            gender_match <- regexpr("_(BOTH|MALE|FEMALE)_", filename)
+            
+            if (year_match > 0 && gender_match > 0) {
+              year <- as.numeric(substr(filename, 
+                                     year_match + 4, 
+                                     year_match + 7))
+              gender <- substr(filename, 
+                            gender_match + 1, 
+                            gender_match + nchar("BOTH") - 1)
+              
+              # Read the file
+              log_message(paste("Reading IHME file for year", year, "and gender", gender),
+                         level = "INFO", show_console = TRUE)
+              
+              file_data <- read.csv(file, stringsAsFactors = FALSE)
+              
+              # Check if the file has the expected columns
+              expected_cols <- c("location_id", "location_name", "race_ethnicity", "life_expectancy", "lower", "upper")
+              if (all(expected_cols %in% names(file_data))) {
+                # Rename columns to match our schema
+                file_data <- file_data %>%
+                  rename(
+                    geoid = location_id,
+                    county_name = location_name,
+                    le_lower_ci = lower,
+                    le_upper_ci = upper
+                  )
+                
+                # Add year and gender
+                file_data$year <- year
+                file_data$gender <- gender
+                
+                # Combine with main IHME dataset
+                if (is.null(ihme_data)) {
+                  ihme_data <- file_data
+                } else {
+                  ihme_data <- rbind(ihme_data, file_data)
+                }
+              } else {
+                log_message(paste("IHME file", filename, "doesn't have expected columns"),
+                           level = "WARN", show_console = TRUE)
+              }
+            }
+          }, error = function(e) {
+            log_message(paste("Error processing IHME file", basename(file), ":", conditionMessage(e)),
+                       level = "ERROR", show_console = TRUE)
+          })
         }
         
-        # Ensure values are sensible
-        expectancy <- pmax(pmin(expectancy, 95), 55) 
-        full_data[[var]] <- round(expectancy, 1)
+        # If we have IHME data, process it and add to full_data
+        if (!is.null(ihme_data) && nrow(ihme_data) > 0) {
+          log_message(paste("Successfully loaded", nrow(ihme_data), "rows of IHME life expectancy data"),
+                     level = "INFO", show_console = TRUE)
+          
+          # Convert geoid to match the format in full_data
+          ihme_data$geoid <- sprintf("%05d", as.numeric(ihme_data$geoid))
+          
+          # Process IHME life expectancy data with all race/ethnicity breakdowns
+          log_message("Processing IHME life expectancy data with race/ethnicity breakdowns",
+                      level = "INFO", show_console = TRUE)
+                      
+          # Create separate dataframes for each gender
+          both_data <- ihme_data %>% filter(gender == "BOTH")
+          male_data <- ihme_data %>% filter(gender == "MALE")
+          female_data <- ihme_data %>% filter(gender == "FEMALE")
+          
+          # Create a base dataframe that will hold all life expectancy variables
+          # Start with just geoid and year columns for all counties and years
+          counties_years <- distinct(full_data, geoid, year)
+          
+          # Function to process data for a specific race/ethnicity
+          process_race_data <- function(race_code, race_label) {
+            log_message(paste("Processing", race_label, "life expectancy data"),
+                        level = "INFO", show_console = TRUE)
+            
+            # Variables to create
+            race_vars <- list()
+            
+            # Process overall (both genders) data
+            race_both <- both_data %>% 
+              filter(race_ethnicity == race_code) %>%
+              select(geoid, year, life_expectancy, lower, upper)
+            
+            # Define variable name based on race
+            if (race_code == "all") {
+              var_name <- "life_expectancy"
+              lower_name <- "le_lower_ci"
+              upper_name <- "le_upper_ci"
+            } else {
+              var_name <- paste0("life_expectancy_", race_code)
+              lower_name <- paste0("le_", race_code, "_lower_ci")
+              upper_name <- paste0("le_", race_code, "_upper_ci")
+            }
+            
+            # Rename columns
+            names(race_both)[names(race_both) == "life_expectancy"] <- var_name
+            names(race_both)[names(race_both) == "lower"] <- lower_name
+            names(race_both)[names(race_both) == "upper"] <- upper_name
+            
+            # Process male data
+            race_male <- male_data %>% 
+              filter(race_ethnicity == race_code) %>%
+              select(geoid, year, life_expectancy, lower, upper)
+            
+            # Define male variable names
+            if (race_code == "all") {
+              male_var_name <- "life_expectancy_male"
+              male_lower_name <- "le_male_lower_ci"
+              male_upper_name <- "le_male_upper_ci"
+            } else {
+              male_var_name <- paste0("life_expectancy_male_", race_code)
+              male_lower_name <- paste0("le_male_", race_code, "_lower_ci")
+              male_upper_name <- paste0("le_male_", race_code, "_upper_ci")
+            }
+            
+            # Rename male columns
+            names(race_male)[names(race_male) == "life_expectancy"] <- male_var_name
+            names(race_male)[names(race_male) == "lower"] <- male_lower_name
+            names(race_male)[names(race_male) == "upper"] <- male_upper_name
+            
+            # Process female data
+            race_female <- female_data %>% 
+              filter(race_ethnicity == race_code) %>%
+              select(geoid, year, life_expectancy, lower, upper)
+            
+            # Define female variable names
+            if (race_code == "all") {
+              female_var_name <- "life_expectancy_female"
+              female_lower_name <- "le_female_lower_ci"
+              female_upper_name <- "le_female_upper_ci"
+            } else {
+              female_var_name <- paste0("life_expectancy_female_", race_code)
+              female_lower_name <- paste0("le_female_", race_code, "_lower_ci")
+              female_upper_name <- paste0("le_female_", race_code, "_upper_ci")
+            }
+            
+            # Rename female columns
+            names(race_female)[names(race_female) == "life_expectancy"] <- female_var_name
+            names(race_female)[names(race_female) == "lower"] <- female_lower_name
+            names(race_female)[names(race_female) == "upper"] <- female_upper_name
+            
+            # Merge all data for this race
+            result <- merge(race_both, race_male, by = c("geoid", "year"), all = TRUE)
+            result <- merge(result, race_female, by = c("geoid", "year"), all = TRUE)
+            
+            return(result)
+          }
+          
+          # Race/ethnicity mapping between IHME codes and our variable names
+          race_mapping <- list(
+            "all" = "all",           # Overall
+            "hispanic" = "hispanic", # Hispanic
+            "nhw" = "nhw",           # Non-Hispanic White
+            "nhb" = "nhb",           # Non-Hispanic Black
+            "nham" = "nhaian",       # Non-Hispanic American Indian/Alaska Native
+            "nha" = "nhasian",       # Non-Hispanic Asian
+            "nhpi" = "nhpi",         # Non-Hispanic Pacific Islander
+            "oth" = "multirace"      # Other/multiracial
+          )
+          
+          # Process each race/ethnicity group and combine
+          all_race_data <- NULL
+          
+          # Process overall (all races) data first
+          all_race_result <- process_race_data("all", "All Races")
+          
+          # Start combined result with all races
+          combined_result <- all_race_result
+          
+          # Process other race/ethnicity groups
+          for (race_code in names(race_mapping)) {
+            if (race_code != "all") {
+              race_label <- race_mapping[[race_code]]
+              race_result <- process_race_data(race_code, race_label)
+              
+              # Merge with combined result
+              combined_result <- merge(combined_result, race_result, 
+                                      by = c("geoid", "year"), 
+                                      all = TRUE)
+            }
+          }
+          
+          # Join with full_data
+          log_message("Merging all IHME life expectancy variables with main dataset",
+                     level = "INFO", show_console = TRUE)
+          
+          # Merge by geoid and year
+          full_data <- merge(full_data, combined_result, 
+                           by = c("geoid", "year"), 
+                           all.x = TRUE)
+          
+          # Add data quality flags for all IHME variables that are now in the dataset
+          ihme_vars_in_data <- intersect(names(full_data), ihme_vars)
+          for (var in ihme_vars_in_data) {
+            quality_col <- paste0(var, "_data_quality")
+            full_data[[quality_col]] <- "direct"
+          }
+          
+          # Count how many IHME variables were successfully added
+          num_ihme_vars_added <- length(ihme_vars_in_data)
+          log_message(paste("Successfully added", num_ihme_vars_added, "IHME life expectancy variables to the dataset"),
+                     level = "INFO", show_console = TRUE)
+          
+          log_message("Successfully added IHME life expectancy data to the dataset",
+                     level = "INFO", show_console = TRUE)
+          
+          return(full_data)
+        }
+      } else {
+        log_message("No IHME CSV files found in data/ihme/CSV",
+                   level = "WARN", show_console = TRUE)
+      }
+    } else {
+      log_message("IHME data directory not found at data/ihme/CSV",
+                 level = "WARN", show_console = TRUE)
+    }
+    
+    # NO SIMULATED DATA - If we couldn't load the actual IHME data, log an error
+    log_message("ERROR: Could not load IHME life expectancy data files. These are required.",
+               level = "ERROR", show_console = TRUE)
+    log_message("Please ensure the IHME CSV files are present in the data/ihme/CSV directory.",
+               level = "ERROR", show_console = TRUE)
+    log_message("The pipeline requires actual data files - simulated data is not acceptable.",
+               level = "ERROR", show_console = TRUE)
+    
+    # Set missing columns to NA with appropriate error flags
+    for (var in ihme_vars) {
+      if (!var %in% names(full_data)) {
+        # Set to NA instead of simulated data
+        full_data[[var]] <- NA
+        
+        # Add data quality flag
+        quality_col <- paste0(var, "_data_quality")
+        full_data[[quality_col]] <- "missing"
       }
     }
   }

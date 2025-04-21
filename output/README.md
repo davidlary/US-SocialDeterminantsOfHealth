@@ -111,6 +111,9 @@ Rscript R/unified_sdoh_pipeline.r
 
 # Run with specific options
 Rscript R/unified_sdoh_pipeline.r --force-update --verbose
+
+# Run with custom configuration file
+Rscript R/unified_sdoh_pipeline.r /path/to/custom_config.yaml
 ```
 
 ## Command Line Options
@@ -120,6 +123,27 @@ Rscript R/unified_sdoh_pipeline.r --force-update --verbose
 - `--skip-interpolation`: Disable interpolation for missing data points
 - `--allow-simulation`: Allow simulated data where real data is unavailable
 - `--offline-mode` or `--offline`: Run in offline mode using only cached data
+
+## YAML Configuration
+
+The pipeline now supports YAML configuration to specify custom data paths, especially useful for using network drives:
+
+```yaml
+# Directory Configuration
+directories:
+  # Code files location
+  root_dir: "/path/to/code/repository/R"
+  
+  # Data storage on network drive
+  data_dir: "/Volumes/ExternalDrive/SDOH/data"
+  output_dir: "/Volumes/ExternalDrive/SDOH/output"
+  
+# Database configuration
+database:
+  db_path: "/Volumes/ExternalDrive/SDOH/output/sdoh_database.duckdb"
+```
+
+For details, see [Configuration Guide](../docs/CONFIG_GUIDE.md)
 
 ## Citation
 

@@ -29,8 +29,9 @@ if (!exists("log_message")) {
   }
 }
 
-# Import the consolidated crosswalk builder
+# Import the consolidated crosswalk builder (single source of truth)
 source("consolidate_crosswalks.r")
+# All other crosswalk builders have been moved to BackupFiles and are no longer used
 
 #' Build and validate the variable crosswalk for the pipeline
 #'

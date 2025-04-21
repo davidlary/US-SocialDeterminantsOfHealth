@@ -97,13 +97,19 @@ Rscript R/install_packages.r
 rm -f data/sdoh_county.duckdb*
 ```
 
-5. Run the data pipeline (using either the traditional or modular version):
+5. Configure the YAML file (optional - see Configuration section below):
 ```
-# Traditional pipeline
+# Edit the configuration file to customize paths and settings
+vi R/config.yaml
+```
+
+6. Run the data pipeline:
+```
+# Run with the default configuration
 Rscript R/unified_sdoh_pipeline.r
 
-# OR use the new modular pipeline (recommended)
-Rscript R/unified_sdoh_pipeline_modular.r
+# OR specify a custom configuration file
+Rscript R/unified_sdoh_pipeline.r /path/to/custom_config.yaml
 ```
 
 ### Command Line Options
@@ -116,6 +122,46 @@ Rscript R/unified_sdoh_pipeline_modular.r
 - `--offline-mode=TRUE`: Run in offline mode using only cached data
 - `--output-format=csv,duckdb,sqlite`: Specify output format(s)
 - `--modules=traffic_safety,climate,housing`: Run only specific modules
+
+### Configuration with YAML
+
+The pipeline now supports YAML configuration to separate code from data storage locations. This is especially useful when using external drives or network storage for large datasets.
+
+#### Basic Configuration Example
+
+```yaml
+# SDOH Pipeline Configuration
+directories:
+  data_dir: "data"
+  output_dir: "output"
+
+database:
+  db_path: "output/us_county_sdoh_unified.duckdb"
+  
+years:
+  min_year: 1990
+  max_year: 2025
+```
+
+#### Network Drive Configuration Example
+
+```yaml
+# Using a network drive for data storage
+directories:
+  # Code files location (must point to where the R scripts are located)
+  root_dir: "/Users/username/Projects/SDOH/R"
+
+# Data storage on network drive
+network_paths:
+  data_dir: "/Volumes/NetworkDrive/SDOH/data"
+  output_dir: "/Volumes/NetworkDrive/SDOH/output"
+  logs_dir: "/Volumes/NetworkDrive/SDOH/logs"
+  
+database:
+  db_path: "/Volumes/NetworkDrive/SDOH/output/sdoh_database.duckdb"
+```
+
+For complete details on all configuration options, see the [Configuration Guide](docs/CONFIG_GUIDE.md).
 
 ## Offline Mode and Data Caching
 
@@ -211,17 +257,20 @@ Rscript R/cache_federal_data.r --sources=traffic_safety,census
 ### Traffic Safety
 | Variable | Description | Unit | Source | Years |
 |----------|-------------|------|--------|-------|
-| traffic_fatality_count | Traffic fatalities | Count | NHTSA FARS | 1975-present |
-| traffic_fatality_rate_per_100k | Traffic fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
-| traffic_injury_count | Traffic injuries | Count | NHTSA FARS | 1975-present |
-| traffic_injury_rate_per_100k | Traffic injury rate | Rate per 100k | NHTSA FARS | 1975-present |
-| ped_bike_fatality_count | Pedestrian/cyclist fatalities | Count | NHTSA FARS | 1975-present |
-| ped_bike_fatality_rate_per_100k | Pedestrian/cyclist fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
-| dui_fatality_count | DUI-related fatalities | Count | NHTSA FARS | 1975-present |
-| dui_fatality_rate_per_100k | DUI-related fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
-| speeding_fatality_count | Speeding-related fatalities | Count | NHTSA FARS | 1975-present |
-| speeding_fatality_rate_per_100k | Speeding-related fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
-| transport_mortality_count | Transport-related deaths | Count | CDC WONDER | 1970-present |
+| traffic_fatalities | Traffic fatalities | Count | NHTSA FARS | 1975-present |
+| traffic_fatality_rate | Traffic fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+| pedestrian_fatalities | Pedestrian fatalities | Count | NHTSA FARS | 1975-present |
+| pedestrian_fatality_rate | Pedestrian fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+| bicycle_fatalities | Bicycle fatalities | Count | NHTSA FARS | 1975-present |
+| bicycle_fatality_rate | Bicycle fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+| motorcycle_fatalities | Motorcycle fatalities | Count | NHTSA FARS | 1975-present |
+| motorcycle_fatality_rate | Motorcycle fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+| alcohol_impaired_fatalities | Alcohol-impaired fatalities | Count | NHTSA FARS | 1975-present |
+| alcohol_impaired_fatality_rate | Alcohol-impaired fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+| speeding_related_fatalities | Speeding-related fatalities | Count | NHTSA FARS | 1975-present |
+| speeding_related_fatality_rate | Speeding-related fatality rate | Rate per 100k | NHTSA FARS | 1975-present |
+
+> Note: All traffic safety data comes from the actual NHTSA Fatality Analysis Reporting System (FARS) dataset. The pipeline processes real data files and does not use simulated data.
 
 ### Health Insurance
 | Variable | Description | Unit | Source | Years |
@@ -235,6 +284,14 @@ Rscript R/cache_federal_data.r --sources=traffic_safety,census
 ### Health Status
 | Variable | Description | Unit | Source | Years |
 |----------|-------------|------|--------|-------|
+| life_expectancy | Life expectancy at birth | Years | IHME | 2000-2019 |
+| life_expectancy_male | Male life expectancy at birth | Years | IHME | 2000-2019 |
+| life_expectancy_female | Female life expectancy at birth | Years | IHME | 2000-2019 |
+| life_expectancy_hispanic | Hispanic life expectancy at birth | Years | IHME | 2000-2019 |
+| life_expectancy_nhw | Non-Hispanic White life expectancy | Years | IHME | 2000-2019 |
+| life_expectancy_nhb | Non-Hispanic Black life expectancy | Years | IHME | 2000-2019 |
+| life_expectancy_nhaian | Non-Hispanic AIAN life expectancy | Years | IHME | 2000-2019 |
+| life_expectancy_nhasian | Non-Hispanic Asian life expectancy | Years | IHME | 2000-2019 |
 | poor_physical_health_pct | Poor physical health | Percentage | CDC PLACES | 2016-present |
 | poor_mental_health_pct | Poor mental health | Percentage | CDC PLACES | 2016-present |
 | depression_pct | Depression | Percentage | CDC PLACES | 2016-present |
@@ -249,6 +306,8 @@ Rscript R/cache_federal_data.r --sources=traffic_safety,census
 | kidney_disease_pct | Kidney disease | Percentage | CDC PLACES | 2016-present |
 | coronary_heart_disease_pct | Coronary heart disease | Percentage | CDC PLACES | 2016-present |
 | stroke_pct | Stroke history | Percentage | CDC PLACES | 2016-present |
+
+> Note: The IHME life expectancy variables use real data from the Institute for Health Metrics and Evaluation's county-level life expectancy datasets. The full dataset includes 29 life expectancy variables with breakdowns by gender, race/ethnicity, and confidence intervals.
 
 ### Health Behaviors
 | Variable | Description | Unit | Source | Years |
@@ -293,6 +352,43 @@ Rscript R/cache_federal_data.r --sources=traffic_safety,census
 
 ## Recent Updates
 
+### YAML Configuration System (April 2025)
+
+A new YAML-based configuration system has been added to the SDOH pipeline, allowing for flexible separation of code from data storage. This is particularly useful for working with large datasets on network drives or external storage.
+
+#### Key Features
+
+1. **Flexible Path Configuration**:
+   - Specify custom paths for data directory, output directory, and database
+   - Support for absolute and relative paths
+   - Special handling for network paths and external drives
+
+2. **Complete Configuration**:
+   - Database settings (path, overwrite options)
+   - Data refresh options (cache usage, maximum data age)
+   - Processing options (parallel execution, core count)
+   - Map generation settings
+   - Year range for data processing
+   - Documentation generation options
+   - API credentials configuration
+   - Traffic safety data options
+
+3. **Multiple Configuration Methods**:
+   - Default YAML file (`config.yaml` in project root)
+   - Custom configuration file via command line
+   - Environment variables override YAML settings
+   - Programmatic access via the `load_config()` function
+
+#### Benefits of YAML Configuration
+
+- **Separation of Concerns**: Code and data storage can be managed independently
+- **Enhanced Portability**: Easy to move between different environments
+- **Improved Collaboration**: Different users can use their own configuration
+- **Network Storage Support**: Use large network drives without modifying code
+- **Configuration Versioning**: Track configuration changes in version control
+
+For detailed instructions on using the YAML configuration system, see the [Configuration Guide](docs/CONFIG_GUIDE.md).
+
 ### Modular Pipeline Architecture (April 2025)
 
 The SDOH pipeline has been refactored into a modular architecture to improve maintainability, readability, and extensibility. This new architecture breaks down the monolithic pipeline into focused, independent components:
@@ -301,7 +397,7 @@ The SDOH pipeline has been refactored into a modular architecture to improve mai
 
 1. **Core Module** (`module_core.r`):
    - Handles initialization, logging, and utilities
-   - Manages configuration and parallel processing setup
+   - Manages YAML configuration and parallel processing setup
    - Provides core functionality used by all other modules
 
 2. **Crosswalk Module** (`module_crosswalk.r`):
@@ -337,7 +433,7 @@ The SDOH pipeline has been refactored into a modular architecture to improve mai
 - **Enhanced Extensibility**: New features can be added as new modules
 - **Simplified Testing**: Modules can be tested in isolation
 
-To use the modular pipeline, run `Rscript R/unified_sdoh_pipeline_modular.r` instead of the traditional pipeline script. For detailed instructions on using and extending the modular pipeline, see the [Modular Pipeline Guide](docs/MODULAR_PIPELINE.md).
+For detailed instructions on using and extending the modular pipeline, see the [Modular Pipeline Guide](docs/MODULAR_PIPELINE.md).
 
 ### Traffic Safety Module (April 2025)
 
