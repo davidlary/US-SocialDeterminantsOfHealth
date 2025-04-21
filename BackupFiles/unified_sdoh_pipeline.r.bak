@@ -623,7 +623,7 @@ if (!use_ipumsr) {
   log_message("Note: Using placeholder NHGIS data if no files are found locally.", 
               level = "WARN", show_console = TRUE)
 } else {
-  log_message("Attempting to use IPUMS API to fetch NHGIS data...", 
+  log_message("Checking for IPUMS mode - will use offline mode", 
               level = "INFO", show_console = TRUE)
 }
 
