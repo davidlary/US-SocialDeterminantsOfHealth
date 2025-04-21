@@ -13,12 +13,18 @@ core_packages <- c(
 # Visualization packages
 viz_packages <- c(
   "ggplot2", "viridis", "RColorBrewer", "plotly", "leaflet", "shiny",
-  "shinydashboard", "DT", "htmlwidgets"
+  "shinydashboard", "DT", "htmlwidgets", "mapview", "gridExtra"
 )
 
 # Data processing packages
 data_packages <- c(
   "imputeTS", "forecast", "furrr", "future", "future.apply", "progressr"
+)
+
+# Traffic safety module packages
+traffic_packages <- c(
+  "digest", "R6", "fs", "R.utils", "quantmod", "tseries", 
+  "forecastHybrid", "rlang", "arrow"
 )
 
 # Machine learning packages
@@ -34,7 +40,7 @@ api_packages <- c(
 )
 
 # Combine all packages
-all_packages <- c(core_packages, viz_packages, data_packages, ml_packages, api_packages)
+all_packages <- c(core_packages, viz_packages, data_packages, traffic_packages, ml_packages, api_packages)
 
 # Install missing packages
 missing_packages <- all_packages[!sapply(all_packages, requireNamespace, quietly = TRUE)]

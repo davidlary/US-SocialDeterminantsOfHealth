@@ -45,8 +45,45 @@ create_unified_database <- function(processed_data,
   log_message(paste("Creating unified database at:", unified_db_path),
              level = "INFO", show_console = TRUE)
   
-  # Connect to the database
-  con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
+  # Try to connect to the database with retry logic
+  con <- NULL
+  max_attempts <- 3
+  attempt <- 1
+  
+  while (attempt <= max_attempts && is.null(con)) {
+    tryCatch({
+      # Try to connect to the database
+      log_message(paste("Connecting to database (attempt", attempt, "of", max_attempts, ")..."),
+                 level = "INFO", show_console = TRUE)
+      
+      con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
+      log_message("Successfully connected to database",
+                 level = "INFO", show_console = TRUE)
+    }, error = function(e) {
+      log_message(paste("Database connection attempt", attempt, "failed:", conditionMessage(e)),
+                 level = "WARN", show_console = TRUE)
+      
+      if (grepl("lock", conditionMessage(e), ignore.case = TRUE)) {
+        # It's a lock issue - try a different path
+        Sys.sleep(2)  # Wait 2 seconds
+        new_path <- gsub("\\.duckdb$", paste0("_alt_", attempt, ".duckdb"), db_path)
+        log_message(paste("Trying alternative database path:", new_path),
+                   level = "INFO", show_console = TRUE)
+        unified_db_path <<- new_path
+      }
+    })
+    
+    attempt <- attempt + 1
+  }
+  
+  # If we couldn't connect to the database after all attempts, use in-memory
+  if (is.null(con)) {
+    log_message("ERROR: Failed to connect to database after multiple attempts. Using in-memory database.",
+               level = "ERROR", show_console = TRUE)
+    
+    # Create an in-memory database as a last resort
+    con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  }
   
   # 1. Create counties table
   log_message("Creating counties table...", level = "INFO", show_console = TRUE)

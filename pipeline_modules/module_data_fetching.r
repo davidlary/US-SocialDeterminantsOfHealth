@@ -95,7 +95,7 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
 #' Process and combine data from all sources
 #'
 #' This function processes and combines data from Census, NHGIS,
-#' and other sources into a unified dataset.
+#' traffic safety, and other sources into a unified dataset.
 #'
 #' @param census_data Dataframe with Census data
 #' @param nhgis_data Dataframe with NHGIS data (can be NULL)
@@ -105,6 +105,9 @@ get_census_data <- function(crosswalk, years, refresh_cache = FALSE, use_cache =
 get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
   # This function simulates a processed dataset for the example
   # In the actual implementation, it would process and combine data from different sources
+  
+  log_message("Processing and combining data from all sources...",
+             level = "INFO", show_console = TRUE)
   
   if (is.null(census_data)) {
     # Create a basic dataset with county IDs and years
@@ -128,7 +131,62 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
     full_data <- census_data
   }
   
-  # Add more variables not already in the Census data
+  # First, try to get traffic safety data and add it to our dataset
+  log_message("Adding traffic safety data...",
+             level = "INFO", show_console = TRUE)
+  
+  if (exists("get_traffic_safety_data")) {
+    # Fetch traffic safety data using the traffic safety module
+    tryCatch({
+      ts_data <- get_traffic_safety_data(years = years)
+      
+      # Check if ts_data has the required geoid and year columns for joining
+      if (is.data.frame(ts_data) && all(c("geoid", "year") %in% names(ts_data))) {
+        # Get list of traffic safety variables
+        ts_vars <- intersect(
+          names(ts_data),
+          crosswalk$variable_name[crosswalk$domain == "Traffic Safety"]
+        )
+        
+        # If no exact matches found, try a looser match
+        if (length(ts_vars) == 0) {
+          ts_vars <- grep("fatalities|fatality_rate", names(ts_data), value = TRUE)
+        }
+        
+        # If we have variables to add
+        if (length(ts_vars) > 0) {
+          log_message(paste("Found", length(ts_vars), "traffic safety variables to add"),
+                     level = "INFO", show_console = TRUE)
+          
+          # Prepare data for merge
+          ts_merge_data <- ts_data[, c("geoid", "year", ts_vars)]
+          
+          # Merge with full_data
+          full_data <- merge(full_data, ts_merge_data, 
+                           by = c("geoid", "year"), 
+                           all.x = TRUE)
+        } else {
+          log_message("No traffic safety variables found in data",
+                     level = "WARN", show_console = TRUE)
+        }
+      } else {
+        log_message("Traffic safety data doesn't have required columns for joining",
+                   level = "WARN", show_console = TRUE)
+      }
+    }, error = function(e) {
+      log_message(paste("Error adding traffic safety data:", conditionMessage(e)),
+                 level = "ERROR", show_console = TRUE)
+    })
+  } else {
+    log_message("Traffic safety data function not found - skipping",
+               level = "WARN", show_console = TRUE)
+  }
+  
+  # Add missing variables from the crosswalk
+  log_message("Adding remaining variables from crosswalk...",
+             level = "INFO", show_console = TRUE)
+  
+  # Add more variables not already in the data
   for (var in crosswalk$variable_name) {
     if (!var %in% names(full_data)) {
       # Generate random values appropriate for this variable
@@ -152,8 +210,49 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
     full_data[[interp_col]] <- sample(c(TRUE, FALSE), nrow(full_data), replace = TRUE, prob = c(0.2, 0.8))
   }
   
+  # Add IHME life expectancy data (simulated)
+  log_message("Adding IHME life expectancy data...",
+             level = "INFO", show_console = TRUE)
+  
+  ihme_vars <- crosswalk$variable_name[grepl("IHME", crosswalk$source)]
+  if (length(ihme_vars) > 0) {
+    for (var in ihme_vars) {
+      if (!var %in% names(full_data)) {
+        # Generate random life expectancy values
+        base_expectancy <- 75 + runif(nrow(full_data), -5, 10)
+        
+        # Adjust based on specific demographic patterns
+        if (grepl("female", var)) {
+          # Females typically have higher life expectancy
+          expectancy <- base_expectancy + runif(nrow(full_data), 2, 5)
+        } else if (grepl("male", var)) {
+          # Males typically have lower life expectancy
+          expectancy <- base_expectancy - runif(nrow(full_data), 2, 5)
+        } else {
+          expectancy <- base_expectancy
+        }
+        
+        # Ensure values are sensible
+        expectancy <- pmax(pmin(expectancy, 95), 55) 
+        full_data[[var]] <- round(expectancy, 1)
+      }
+    }
+  }
+  
   log_message(paste("Processed data created with", nrow(full_data), "rows and", ncol(full_data), "columns"),
              level = "INFO", show_console = TRUE)
+  
+  # Count variables by domain
+  domain_counts <- crosswalk %>%
+    group_by(domain) %>%
+    summarize(count = n()) %>%
+    arrange(desc(count))
+  
+  log_message("Variable counts by domain:", level = "INFO", show_console = TRUE)
+  for (i in 1:nrow(domain_counts)) {
+    log_message(paste(" -", domain_counts$domain[i], ":", domain_counts$count[i]),
+               level = "INFO", show_console = TRUE)
+  }
   
   return(full_data)
 }
