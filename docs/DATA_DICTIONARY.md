@@ -185,11 +185,33 @@ This documentation provides comprehensive details about all data sources used in
 | life_expectancy | Life expectancy at birth (all races/genders combined) | IHME | 2000-2019 | years |
 | life_expectancy_female | Female life expectancy at birth | IHME | 2000-2019 | years |
 | life_expectancy_male | Male life expectancy at birth | IHME | 2000-2019 | years |
-| life_expectancy_latino | Latino life expectancy at birth | IHME | 2000-2019 | years |
-| life_expectancy_black | Black life expectancy at birth | IHME | 2000-2019 | years |
-| life_expectancy_white | White life expectancy at birth | IHME | 2000-2019 | years |
-| life_expectancy_aian | American Indian/Alaska Native life expectancy | IHME | 2000-2019 | years |
-| life_expectancy_api | Asian/Pacific Islander life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_hispanic | Hispanic/Latino life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_nhb | Non-Hispanic Black life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_nhw | Non-Hispanic White life expectancy at birth | IHME | 2000-2019 | years |
+| life_expectancy_nhaian | American Indian/Alaska Native life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_nhasian | Asian/Pacific Islander life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_nhpi | Native Hawaiian/Pacific Islander life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_multirace | Multiple race life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_male_hispanic | Hispanic/Latino male life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_male_nhb | Non-Hispanic Black male life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_male_nhw | Non-Hispanic White male life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_male_nhaian | American Indian/Alaska Native male life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_male_nhasian | Asian/Pacific Islander male life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_female_hispanic | Hispanic/Latino female life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_female_nhb | Non-Hispanic Black female life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_female_nhw | Non-Hispanic White female life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_female_nhaian | American Indian/Alaska Native female life expectancy | IHME | 2000-2019 | years |
+| life_expectancy_female_nhasian | Asian/Pacific Islander female life expectancy | IHME | 2000-2019 | years |
+| le_lower_ci | Life expectancy 95% confidence interval (lower) | IHME | 2000-2019 | years |
+| le_upper_ci | Life expectancy 95% confidence interval (upper) | IHME | 2000-2019 | years |
+| le_male_lower_ci | Male life expectancy 95% confidence interval (lower) | IHME | 2000-2019 | years |
+| le_male_upper_ci | Male life expectancy 95% confidence interval (upper) | IHME | 2000-2019 | years |
+| le_female_lower_ci | Female life expectancy 95% confidence interval (lower) | IHME | 2000-2019 | years |
+| le_female_upper_ci | Female life expectancy 95% confidence interval (upper) | IHME | 2000-2019 | years |
+| le_hispanic_lower_ci | Hispanic/Latino life expectancy 95% confidence interval (lower) | IHME | 2000-2019 | years |
+| le_hispanic_upper_ci | Hispanic/Latino life expectancy 95% confidence interval (upper) | IHME | 2000-2019 | years |
+| le_nhb_lower_ci | Non-Hispanic Black life expectancy 95% confidence interval (lower) | IHME | 2000-2019 | years |
+| le_nhb_upper_ci | Non-Hispanic Black life expectancy 95% confidence interval (upper) | IHME | 2000-2019 | years |
 | years_potential_life_lost | Years of potential life lost before age 75 | CDC WONDER | 1990-present | years per 100k |
 | age_adjusted_mortality | Age-adjusted mortality rate | CDC WONDER | 1990-present | rate per 100k |
 | premature_death_rate | Premature death rate | CDC WONDER | 1990-present | rate per 100k |

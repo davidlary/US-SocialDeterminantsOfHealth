@@ -256,14 +256,47 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
               
               file_data <- read.csv(file, stringsAsFactors = FALSE)
               
-              # Check if the file has the expected columns
-              expected_cols <- c("location_id", "location_name", "race_ethnicity", "life_expectancy", "lower", "upper")
-              if (all(expected_cols %in% names(file_data))) {
+              # Check for different IHME CSV formats
+              if ("location_id" %in% names(file_data) && "location_name" %in% names(file_data)) {
+                # This is the standard format with location_id, val, etc.
+                log_message(paste("Processing IHME file with standard format:", filename), 
+                           level = "INFO", show_console = TRUE)
+                
+                # Extract race_ethnicity from race_name or race_id
+                if ("race_name" %in% names(file_data)) {
+                  # Map race_name to our standard codes
+                  race_name_mapping <- list(
+                    "Total" = "all",
+                    "Latino" = "hispanic",
+                    "White" = "nhw",
+                    "Black" = "nhb",
+                    "Asian" = "nhasian",
+                    "AIAN" = "nhaian",
+                    "NHPI" = "nhpi",
+                    "API" = "nhasian", # API (Asian/Pacific Islander) in older IHME files
+                    "Multiple races" = "multirace",
+                    "Other" = "multirace"
+                  )
+                  
+                  # Add race_ethnicity column based on race_name
+                  file_data$race_ethnicity <- sapply(file_data$race_name, function(name) {
+                    if (name %in% names(race_name_mapping)) {
+                      return(race_name_mapping[[name]])
+                    } else {
+                      return("all")  # Default to "all" if not found
+                    }
+                  })
+                } else {
+                  # Default to "all" if we can't determine race
+                  file_data$race_ethnicity <- "all"
+                }
+                
                 # Rename columns to match our schema
                 file_data <- file_data %>%
                   rename(
                     geoid = location_id,
                     county_name = location_name,
+                    life_expectancy = val,
                     le_lower_ci = lower,
                     le_upper_ci = upper
                   )
@@ -278,9 +311,122 @@ get_processed_data <- function(census_data, nhgis_data, years, crosswalk) {
                 } else {
                   ihme_data <- rbind(ihme_data, file_data)
                 }
+              } else if ("Location" %in% names(file_data) && "LE_both" %in% names(file_data)) {
+                # This is the legacy format with Location, LE_both, LE_race_* columns
+                log_message(paste("Processing IHME file with legacy format:", filename), 
+                           level = "INFO", show_console = TRUE)
+                
+                # Determine year from filename or assume latest (2019)
+                year_from_filename <- as.numeric(gsub(".*_(\\d{4})\\.CSV$", "\\1", filename))
+                if (is.na(year_from_filename)) {
+                  year_from_filename <- 2019  # Default to 2019 if not in filename
+                }
+                
+                # Process race-specific life expectancy data
+                race_data_list <- list()
+                
+                # Add overall life expectancy data
+                overall_data <- data.frame(
+                  geoid = file_data$FIPS,
+                  county_name = file_data$Location,
+                  race_ethnicity = "all",
+                  gender = "BOTH",
+                  year = year_from_filename,
+                  life_expectancy = file_data$LE_both,
+                  le_lower_ci = file_data$LE_both - file_data$SD_both,
+                  le_upper_ci = file_data$LE_both + file_data$SD_both,
+                  stringsAsFactors = FALSE
+                )
+                
+                # Add male life expectancy data
+                male_data <- data.frame(
+                  geoid = file_data$FIPS,
+                  county_name = file_data$Location,
+                  race_ethnicity = "all",
+                  gender = "MALE",
+                  year = year_from_filename,
+                  life_expectancy = file_data$LE_male,
+                  le_lower_ci = file_data$LE_male - file_data$SD_male,
+                  le_upper_ci = file_data$LE_male + file_data$SD_male,
+                  stringsAsFactors = FALSE
+                )
+                
+                # Add female life expectancy data
+                female_data <- data.frame(
+                  geoid = file_data$FIPS,
+                  county_name = file_data$Location,
+                  race_ethnicity = "all",
+                  gender = "FEMALE",
+                  year = year_from_filename,
+                  life_expectancy = file_data$LE_female,
+                  le_lower_ci = file_data$LE_female - file_data$SD_female,
+                  le_upper_ci = file_data$LE_female + file_data$SD_female,
+                  stringsAsFactors = FALSE
+                )
+                
+                # Combine all data
+                legacy_data <- rbind(
+                  overall_data,
+                  male_data,
+                  female_data
+                )
+                
+                # For each race-specific column, create a separate entry
+                race_columns <- grep("^LE_race_", names(file_data), value = TRUE)
+                if (length(race_columns) > 0) {
+                  log_message(paste("Found race-specific columns:", paste(race_columns, collapse = ", ")),
+                             level = "INFO", show_console = TRUE)
+                  
+                  for (race_col in race_columns) {
+                    # Extract the race name from the column name
+                    race_name <- sub("^LE_race_", "", race_col)
+                    
+                    # Map the race name to our standard code
+                    race_code <- switch(race_name,
+                                      "white" = "nhw",
+                                      "black" = "nhb",
+                                      "hispanic" = "hispanic",
+                                      "asian" = "nhasian",
+                                      "aian" = "nhaian",
+                                      "api" = "nhasian",
+                                      "multirace" = "multirace",
+                                      "all") # Default
+                    
+                    # Create data frame for this race
+                    race_specific_data <- data.frame(
+                      geoid = file_data$FIPS,
+                      county_name = file_data$Location,
+                      race_ethnicity = race_code,
+                      gender = "BOTH",  # Race-specific data in legacy format is for both genders
+                      year = year_from_filename,
+                      life_expectancy = file_data[[race_col]],
+                      le_lower_ci = NA,  # CIs not available in legacy format
+                      le_upper_ci = NA,
+                      stringsAsFactors = FALSE
+                    )
+                    
+                    # Add to the combined dataset
+                    legacy_data <- rbind(legacy_data, race_specific_data)
+                  }
+                }
+                
+                # Format the FIPS code to match our standard geoid format
+                legacy_data$geoid <- sprintf("%05d", as.numeric(legacy_data$geoid))
+                
+                log_message(paste("Processed legacy format with", nrow(legacy_data), "rows for year", year_from_filename),
+                           level = "INFO", show_console = TRUE)
+                
+                # Combine with main IHME dataset
+                if (is.null(ihme_data)) {
+                  ihme_data <- legacy_data
+                } else {
+                  ihme_data <- rbind(ihme_data, legacy_data)
+                }
               } else {
                 log_message(paste("IHME file", filename, "doesn't have expected columns"),
                            level = "WARN", show_console = TRUE)
+                log_message(paste("Columns found:", paste(names(file_data), collapse = ", ")),
+                           level = "INFO", show_console = TRUE)
               }
             }
           }, error = function(e) {
