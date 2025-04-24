@@ -1956,3 +1956,8 @@ create_unified_database <- function(processed_data,
 if (!exists("is_sourced") || !is_sourced()) {
   message("Database module cannot be run directly. Use the unified pipeline.")
 }
+
+# Return TRUE if sourced to indicate successful loading
+if (exists("is_sourced") && is_sourced()) {
+  TRUE
+}
