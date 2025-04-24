@@ -140,6 +140,8 @@ For spatial features:
 - `--output-format=csv,duckdb,sqlite`: Specify output format(s)
 - `--modules=traffic_safety,climate,housing`: Run only specific modules
 - `--use-sample-data`: Use generated sample data for testing
+- `--incremental=TRUE|FALSE`: Enable/disable incremental processing (only update new/changed data)
+- `--force-full-rebuild=TRUE`: Force a full database rebuild even when in incremental mode
 
 ## YAML Configuration
 

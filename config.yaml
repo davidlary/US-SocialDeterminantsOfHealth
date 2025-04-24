@@ -36,6 +36,8 @@ processing:
   parallel: true
   cores: 4  # Set to null to use N-1 cores automatically
   min_cores: 2
+  incremental: true  # Enable incremental processing (only process new/changed data)
+  force_full_rebuild: false  # Force full reprocessing of all data
   
 # Map generation options
 maps:

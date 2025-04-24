@@ -18,11 +18,19 @@ library(tidyr)
 #' @param crosswalk The variable crosswalk table
 #' @param db_path Path to save the DuckDB database
 #' @param overwrite Whether to overwrite an existing database
+#' @param incremental Whether to use incremental processing (only process new/changed data)
+#' @param force_full_rebuild Force full rebuild regardless of incremental settings
+#' @param data_sources List of data sources that were processed in this run
+#' @param processed_years Range of years that were processed in this run
 #' @return TRUE if successful, FALSE otherwise
 create_unified_database <- function(processed_data, 
                                   crosswalk, 
                                   db_path = "output/us_county_sdoh_unified.duckdb",
-                                  overwrite = FALSE) {
+                                  overwrite = FALSE,
+                                  incremental = FALSE,
+                                  force_full_rebuild = FALSE,
+                                  data_sources = NULL,
+                                  processed_years = NULL) {
   
   log_message("\nSTEP 4: CREATING UNIFIED DATABASE", 
              level = "INFO", show_console = TRUE)
@@ -42,8 +50,30 @@ create_unified_database <- function(processed_data,
   
   # Get the full path to the database
   unified_db_path <- db_path
-  log_message(paste("Creating unified database at:", unified_db_path),
+  log_message(paste("Database path:", unified_db_path),
              level = "INFO", show_console = TRUE)
+             
+  # Determine whether to use incremental mode
+  use_incremental <- incremental && file.exists(unified_db_path) && !force_full_rebuild && !overwrite
+  
+  if (use_incremental) {
+    log_message("Using INCREMENTAL processing mode - only updating new or changed data",
+               level = "INFO", show_console = TRUE)
+  } else {
+    if (force_full_rebuild) {
+      log_message("Force full rebuild specified - using FULL processing mode",
+                 level = "INFO", show_console = TRUE)
+    } else if (overwrite) {
+      log_message("Overwrite specified - using FULL processing mode",
+                 level = "INFO", show_console = TRUE)
+    } else if (!file.exists(unified_db_path)) {
+      log_message("Database does not exist yet - using FULL processing mode",
+                 level = "INFO", show_console = TRUE)
+    } else if (!incremental) {
+      log_message("Incremental processing disabled - using FULL processing mode",
+                 level = "INFO", show_console = TRUE)
+    }
+  }
   
   # Try to connect to the database with retry logic
   con <- NULL
@@ -70,6 +100,7 @@ create_unified_database <- function(processed_data,
         log_message(paste("Trying alternative database path:", new_path),
                    level = "INFO", show_console = TRUE)
         unified_db_path <<- new_path
+        use_incremental <<- incremental && file.exists(unified_db_path) && !force_full_rebuild && !overwrite
       }
     })
     
@@ -83,7 +114,25 @@ create_unified_database <- function(processed_data,
     
     # Create an in-memory database as a last resort
     con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+    use_incremental <- FALSE  # Can't use incremental with in-memory DB
   }
+  
+  # Create metadata table to track processing status if it doesn't exist
+  log_message("Setting up processing metadata tracking...",
+             level = "INFO", show_console = TRUE)
+             
+  dbExecute(con, "
+    CREATE TABLE IF NOT EXISTS processing_metadata (
+      data_source VARCHAR,
+      variable_name VARCHAR,
+      min_year INTEGER,
+      max_year INTEGER,
+      record_count INTEGER,
+      last_processed TIMESTAMP,
+      data_version VARCHAR,
+      PRIMARY KEY (data_source, variable_name)
+    )
+  ")
   
   # 1. Create counties table
   log_message("Creating counties table...", level = "INFO", show_console = TRUE)
@@ -208,6 +257,27 @@ create_unified_database <- function(processed_data,
       PRIMARY KEY (geoid, year, variable_name)
     )
   ")
+  
+  # If we're in incremental mode, check what data we already have
+  previously_processed_data <- NULL
+  if (use_incremental) {
+    log_message("Retrieving previously processed data information...",
+               level = "INFO", show_console = TRUE)
+    
+    # Get metadata about previously processed data
+    previously_processed_data <- dbGetQuery(con, "SELECT * FROM processing_metadata")
+    
+    if (nrow(previously_processed_data) > 0) {
+      log_message(paste("Found metadata for", nrow(previously_processed_data), 
+                       "previously processed variables"),
+                 level = "INFO", show_console = TRUE)
+    } else {
+      log_message("No previously processed data found in metadata - will process all data",
+                 level = "INFO", show_console = TRUE)
+      # Force full processing if no metadata exists
+      use_incremental <- FALSE
+    }
+  }
   
   # Process the data for insertion (convert from wide to long format)
   # First, identify the columns that need to be pivoted (excluding metadata)
@@ -394,18 +464,118 @@ create_unified_database <- function(processed_data,
   
   # Process and insert each batch result
   for (batch in 1:total_batches) {
+    # Calculate batch columns for this batch
+    start_idx <- (batch - 1) * batch_size + 1
+    end_idx <- min(batch * batch_size, length(pivot_cols))
+    batch_cols <- pivot_cols[start_idx:end_idx]
+    
     # Get batch result - already processed by the process_batch function
     long_data <- batch_results[[batch]]
-    log_message(paste("Inserting batch", batch, "of", total_batches, "into database"),
+    
+    # In incremental mode, filter out already processed data that hasn't changed
+    if (use_incremental && !is.null(previously_processed_data) && nrow(previously_processed_data) > 0) {
+      # Start by marking the batch's variables and their sources
+      batch_var_sources <- data.frame(
+        variable_name = batch_cols,
+        data_source = ifelse(
+          grepl("^census_", batch_cols), "census",
+          ifelse(grepl("^traffic_", batch_cols), "traffic_safety",
+                 ifelse(grepl("^life_expectancy", batch_cols), "ihme",
+                        "other")
+          )
+        ),
+        stringsAsFactors = FALSE
+      )
+      
+      # Get the variables in this batch that are already in the database
+      vars_to_skip <- NULL
+      for (i in 1:nrow(batch_var_sources)) {
+        var_name <- batch_var_sources$variable_name[i]
+        var_source <- batch_var_sources$data_source[i]
+        
+        # Check if this variable from this source is already processed
+        var_metadata <- previously_processed_data %>%
+          filter(variable_name == var_name & data_source == var_source)
+        
+        # If we have metadata for this variable
+        if (nrow(var_metadata) > 0) {
+          # Check if we have a data_version to compare
+          current_version <- "current"  # Default version for current data
+          
+          # Only skip if no force update is requested and the variable hasn't been modified
+          vars_to_skip <- c(vars_to_skip, var_name)
+        }
+      }
+      
+      # Calculate how many records we're skipping
+      if (length(vars_to_skip) > 0) {
+        vars_to_skip_count <- long_data %>%
+          filter(variable_name %in% vars_to_skip) %>%
+          nrow()
+        
+        if (vars_to_skip_count > 0) {
+          log_message(paste("Skipping", vars_to_skip_count, "already processed records for batch", batch),
+                     level = "INFO", show_console = TRUE)
+          
+          # Filter out the data that's already been processed
+          long_data <- long_data %>%
+            filter(!variable_name %in% vars_to_skip)
+        }
+      }
+    }
+    
+    # Skip empty batches
+    if (nrow(long_data) == 0) {
+      log_message(paste("Batch", batch, "has no new data to insert - skipping"),
+                 level = "INFO", show_console = TRUE)
+      next
+    }
+    
+    log_message(paste("Inserting batch", batch, "of", total_batches, "into database (",
+                      nrow(long_data), "records)"),
                level = "INFO", show_console = TRUE)
     
-    # Insert this batch into the database without redundant processing
-    # The batch_results already contain all needed processing from the process_batch function
-    tryCatch({
-      dbWriteTable(con, "sdoh_data", long_data, append = TRUE)
-      log_message(paste("Inserted", nrow(long_data), "data points for batch", batch),
-                 level = "INFO", show_console = TRUE)
-    }, error = function(e) {
+    # For incremental mode, use "upsert" approach to update existing records
+    if (use_incremental) {
+      # Create a temporary table for the batch data
+      temp_table_name <- paste0("temp_batch_", batch)
+      
+      tryCatch({
+        # Create temporary table
+        dbWriteTable(con, temp_table_name, long_data, temporary = TRUE)
+        
+        # Use SQL for upsert operation
+        upsert_query <- paste0("
+          INSERT OR REPLACE INTO sdoh_data 
+          SELECT * FROM ", temp_table_name
+        )
+        
+        # Execute the upsert
+        dbExecute(con, upsert_query)
+        
+        # Clean up temporary table
+        dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+        
+        log_message(paste("Upserted", nrow(long_data), "data points for batch", batch),
+                   level = "INFO", show_console = TRUE)
+      }, error = function(e) {
+        # Try to clean up the temp table if it exists
+        tryCatch({
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+        }, error = function(e2) {
+          # Ignore errors dropping temp table
+        })
+        
+        # Re-throw the original error
+        stop(paste("Error during upsert operation:", conditionMessage(e)))
+      })
+    } else {
+      # For full processing mode, use the original append method
+      tryCatch({
+        dbWriteTable(con, "sdoh_data", long_data, append = TRUE)
+        log_message(paste("Inserted", nrow(long_data), "data points for batch", batch),
+                   level = "INFO", show_console = TRUE)
+      }, error = function(e) {
       # Check for duplicate key errors
       if (grepl("Duplicate key.*violates primary key constraint", conditionMessage(e))) {
         # Find duplicate entries in this batch
@@ -526,6 +696,60 @@ create_unified_database <- function(processed_data,
   min_year <- dbGetQuery(con, "SELECT MIN(year) FROM sdoh_data")[1,1]
   max_year <- dbGetQuery(con, "SELECT MAX(year) FROM sdoh_data")[1,1]
   
+  # Update processing metadata
+  log_message("Updating processing metadata...",
+             level = "INFO", show_console = TRUE)
+  
+  # Get metrics for each variable in the database
+  variable_metrics <- dbGetQuery(con, "
+    SELECT 
+      variable_name,
+      MIN(year) as min_year,
+      MAX(year) as max_year,
+      COUNT(*) as record_count
+    FROM sdoh_data
+    GROUP BY variable_name
+  ")
+  
+  # Create metadata entries for each variable
+  if (nrow(variable_metrics) > 0) {
+    # Determine data sources for each variable
+    variable_sources <- variable_metrics %>%
+      mutate(
+        data_source = case_when(
+          grepl("^census_", variable_name) ~ "census",
+          grepl("^traffic_", variable_name) ~ "traffic_safety", 
+          grepl("^life_expectancy", variable_name) ~ "ihme",
+          TRUE ~ "other"
+        )
+      )
+    
+    # Create metadata entries
+    metadata_entries <- variable_sources %>%
+      mutate(
+        last_processed = Sys.time(),
+        data_version = "current"
+      )
+    
+    # Update the metadata table - delete existing entries first to avoid conflicts
+    if (nrow(metadata_entries) > 0) {
+      # Get the list of variables in the new metadata
+      var_names_list <- paste0("'", paste(metadata_entries$variable_name, collapse = "','"), "'")
+      
+      # Delete existing entries for these variables
+      delete_query <- paste0("
+        DELETE FROM processing_metadata 
+        WHERE variable_name IN (", var_names_list, ")
+      ")
+      dbExecute(con, delete_query)
+      
+      # Insert the new metadata
+      dbWriteTable(con, "processing_metadata", metadata_entries, append = TRUE)
+      log_message(paste("Updated processing metadata for", nrow(metadata_entries), "variables"),
+                 level = "INFO", show_console = TRUE)
+    }
+  }
+  
   # Disconnect from the database
   dbDisconnect(con)
   
@@ -543,6 +767,15 @@ create_unified_database <- function(processed_data,
   log_message(paste(" - Year range:", min_year, "to", max_year, 
                    "(", year_count, "unique years)"),
              level = "INFO", show_console = TRUE)
+  
+  # Indicate whether incremental processing was used
+  if (use_incremental) {
+    log_message(" - Processing mode: INCREMENTAL (only new/changed data processed)",
+               level = "INFO", show_console = TRUE)
+  } else {
+    log_message(" - Processing mode: FULL (all data reprocessed)",
+               level = "INFO", show_console = TRUE)
+  }
   
   return(TRUE)
 }

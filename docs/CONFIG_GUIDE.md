@@ -71,14 +71,21 @@ data_refresh:
 
 ### Processing Options
 
-Configure parallel processing:
+Configure processing behavior including parallelism and incremental mode:
 
 ```yaml
 processing:
   parallel: true
   cores: 4  # Set to null to use automatic detection
   min_cores: 2
+  incremental: true  # Enable incremental processing (only update new/changed data)
+  force_full_rebuild: false  # Force full reprocessing of all data
 ```
+
+The incremental processing option is particularly important for efficiency:
+- When `incremental: true`, the pipeline will only process new or changed data, making subsequent runs much faster
+- When `force_full_rebuild: true`, the pipeline will perform a full rebuild regardless of incremental setting
+- You can override both settings via command line with `--incremental=TRUE|FALSE` and `--force-full-rebuild=TRUE`
 
 ### Maps and Visualization
 

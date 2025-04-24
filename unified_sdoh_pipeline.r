@@ -488,12 +488,51 @@ processed_data <- get_processed_data(
 # -------------------------------------------------------------------------
 source("pipeline_modules/module_database.r")
 
+# Determine if we should use incremental processing
+use_incremental <- FALSE
+if (exists("config") && 
+    is.list(config) && 
+    "processing" %in% names(config) && 
+    "incremental" %in% names(config$processing)) {
+  use_incremental <- config$processing$incremental
+}
+
+# Check if we should force a full rebuild
+force_full_rebuild <- FALSE
+if (exists("config") && 
+    is.list(config) && 
+    "processing" %in% names(config) && 
+    "force_full_rebuild" %in% names(config$processing)) {
+  force_full_rebuild <- config$processing$force_full_rebuild
+}
+
+# Check for command-line override for incremental mode
+args <- commandArgs(trailingOnly = TRUE)
+if (any(grepl("^--incremental=", args))) {
+  incremental_arg <- grep("^--incremental=", args, value = TRUE)[1]
+  use_incremental <- as.logical(sub("^--incremental=", "", incremental_arg))
+  log_message(paste("Command-line override for incremental mode:", use_incremental),
+             level = "INFO", log_file = log_file)
+}
+
+# Check for command-line override for full rebuild
+if (any(grepl("^--force-full-rebuild=", args))) {
+  rebuild_arg <- grep("^--force-full-rebuild=", args, value = TRUE)[1]
+  force_full_rebuild <- as.logical(sub("^--force-full-rebuild=", "", rebuild_arg))
+  log_message(paste("Command-line override for force-full-rebuild:", force_full_rebuild),
+             level = "INFO", log_file = log_file)
+}
+
 # Create the unified database
 create_unified_database(
   processed_data = processed_data,
   crosswalk = crosswalk,
   db_path = config$database$full_db_path,
-  overwrite = config$database$overwrite_db
+  overwrite = config$database$overwrite_db,
+  incremental = use_incremental,
+  force_full_rebuild = force_full_rebuild,
+  data_sources = c("census", "ihme", "traffic_safety", "epa"),
+  processed_years = config$years$min_year:config$years$max_year
 )
 
 # -------------------------------------------------------------------------
