@@ -11,6 +11,64 @@ library(lubridate)
 library(sf)
 library(zoo) # For interpolation if needed
 
+#' Find local transportation data files
+#'
+#' Searches multiple directories for transportation data files, including
+#' NHTS, All Transit Database, and ACS transportation-related data.
+#'
+#' @return A list of file paths organized by data type
+find_local_transportation_files <- function() {
+  # List of directories to check
+  transport_dirs <- c(
+    "data/transportation",
+    "data/cache/transportation",
+    "data/transit",
+    "data/nhts",
+    "data/transport"
+  )
+  
+  # Also check subdirectories for specific data types
+  for (base_dir in c("data", "data/cache")) {
+    for (subdir in c("transportation", "transit", "nhts", "transport", "acs_transportation")) {
+      transport_dirs <- c(transport_dirs, file.path(base_dir, subdir))
+    }
+  }
+  
+  # List of possible file extensions
+  file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$", "\\.zip$", "\\.txt$", "\\.rds$")
+  
+  # Search for files
+  all_files <- c()
+  for (dir in transport_dirs) {
+    if (dir.exists(dir)) {
+      for (ext in file_exts) {
+        files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+        all_files <- c(all_files, files)
+      }
+    }
+  }
+  
+  # Filter for different types of transportation data
+  transport_files <- list(
+    nhts = grep("nhts|household.*travel|travel.*survey", 
+               all_files, value = TRUE, ignore.case = TRUE),
+    transit = grep("transit|all.*transit|connectivity|public.*transport", 
+                  all_files, value = TRUE, ignore.case = TRUE),
+    acs_transport = grep("acs.*transport|commut|vehicle.*household|zero.*vehicle", 
+                       all_files, value = TRUE, ignore.case = TRUE)
+  )
+  
+  # Sort by modification time (newest first)
+  for (type in names(transport_files)) {
+    if (length(transport_files[[type]]) > 0) {
+      file_info <- file.info(transport_files[[type]])
+      transport_files[[type]] <- transport_files[[type]][order(file_info$mtime, decreasing = TRUE)]
+    }
+  }
+  
+  return(transport_files)
+}
+
 #' Fetch transportation data
 #'
 #' Retrieves transportation data from National Household Travel Survey,
@@ -19,25 +77,26 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param allow_interpolation Whether to interpolate missing values
 #' @param data_quality_flags List of standardized data quality flags
 #' @param offline_mode Whether to skip all downloads and use only cached data
+#' @param parallel Whether to use parallel processing
+#' @param parallel_config Optional parallel processing configuration
 #' @return A data frame with transportation data for all requested years
 fetch_transportation_data <- function(years, 
                               cache_dir = "data/cache", 
                               refresh_cache = FALSE,
-                              allow_simulation = FALSE,
                               allow_interpolation = TRUE,
                               data_quality_flags = list(
                                 direct = "direct",
                                 interpolated = "interpolated",
                                 extrapolated = "extrapolated",
-                                simulated = "simulated",
                                 missing = NA,
                                 imputed = "imputed"
                               ),
-                              offline_mode = FALSE) {
+                              offline_mode = FALSE,
+                              parallel = FALSE,
+                              parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -46,6 +105,57 @@ fetch_transportation_data <- function(years,
       message(msg)
     } else {
       cat(msg, "\n")
+    }
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for transportation data")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for transportation data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
     }
   }
   
@@ -108,6 +218,10 @@ fetch_transportation_data <- function(years,
   
   # Function to get National Household Travel Survey data
   get_nhts_data <- function() {
+    # Find available local NHTS files
+    local_files <- find_local_transportation_files()
+    nhts_files <- local_files$nhts
+    
     # NHTS is conducted periodically (2001, 2009, 2017)
     # We need to map these to the years in our range
     
@@ -127,13 +241,21 @@ fetch_transportation_data <- function(years,
     
     # Process each NHTS survey year
     for (nhts_year in unique_nhts_years) {
-      # Define file paths
+      # Check for existing files that match this year
+      year_pattern <- paste0("nhts.*", nhts_year, "|", nhts_year, ".*nhts|travel.*survey.*", nhts_year)
+      existing_files <- grep(year_pattern, nhts_files, value = TRUE)
+      
+      # Default file path if we need to download
       nhts_file <- file.path(data_dir, paste0("nhts_", nhts_year, ".csv"))
       
       # Check if we need to download
-      need_download <- !file.exists(nhts_file) || refresh_cache
+      need_download <- length(existing_files) == 0 || refresh_cache
       
-      if (need_download) {
+      # Use existing file if available
+      if (length(existing_files) > 0 && !need_download) {
+        nhts_file <- existing_files[1]  # Use the first (newest) file
+        print_msg(paste("Using existing NHTS file for", nhts_year, ":", basename(nhts_file)))
+      } else if (need_download && !offline_mode) {
         # NHTS data requires registration and download from their website
         # URLs change for each survey, so we'll provide placeholder URL structure
         nhts_url <- paste0(
@@ -142,24 +264,70 @@ fetch_transportation_data <- function(years,
           "/download/CountyLevel.csv"
         )
         
+        # Make sure the directory exists
+        if (!dir.exists(dirname(nhts_file))) {
+          dir.create(dirname(nhts_file), recursive = TRUE)
+        }
+        
         # Try to download
-        if (!safe_download(nhts_url, nhts_file, paste("NHTS data for", nhts_year))) {
+        success <- safe_download(nhts_url, nhts_file, paste("NHTS data for", nhts_year))
+        
+        if (!success) {
           print_msg(paste("Could not download NHTS data for", nhts_year))
-          # NHTS data typically requires registration and manual download
-          # A real implementation would need to handle this differently
+          
+          # Try to find any NHTS files for any year
+          if (length(nhts_files) > 0) {
+            # If we have any NHTS files, use the newest one available
+            nhts_file <- nhts_files[1]
+            found_year <- as.numeric(regmatches(basename(nhts_file), regexpr("\\d{4}", basename(nhts_file)))[1])
+            if (!is.na(found_year)) {
+              print_msg(paste("Using available NHTS data from", found_year, "as fallback"))
+            } else {
+              print_msg(paste("Using available NHTS file:", basename(nhts_file)))
+            }
+          } else {
+            print_msg("No NHTS data files found")
+            next
+          }
+        }
+      } else if (offline_mode && need_download) {
+        print_msg(paste("Offline mode: Cannot download NHTS data for", nhts_year))
+        
+        # Look for any available NHTS files
+        if (length(nhts_files) > 0) {
+          nhts_file <- nhts_files[1]
+          found_year <- as.numeric(regmatches(basename(nhts_file), regexpr("\\d{4}", basename(nhts_file)))[1])
+          if (!is.na(found_year)) {
+            print_msg(paste("Using available NHTS data from", found_year))
+          } else {
+            print_msg(paste("Using available NHTS file:", basename(nhts_file)))
+          }
+        } else {
+          print_msg("No NHTS data files found in offline mode")
           next
         }
-      } else {
-        print_msg(paste("Using existing NHTS file for", nhts_year))
       }
       
       # Process the data if file exists
       if (file.exists(nhts_file)) {
-        print_msg(paste("Reading NHTS data for", nhts_year))
+        print_msg(paste("Reading NHTS data from", basename(nhts_file)))
         
         # Read the file
         tryCatch({
-          nhts_data <- read_csv(nhts_file, show_col_types = FALSE)
+          # Determine file type and read accordingly
+          file_ext <- tolower(tools::file_ext(nhts_file))
+          
+          if (file_ext == "csv") {
+            nhts_data <- read_csv(nhts_file, show_col_types = FALSE)
+          } else if (file_ext %in% c("xlsx", "xls")) {
+            nhts_data <- read_excel(nhts_file)
+          } else if (file_ext == "txt") {
+            # Try to determine delimiter
+            nhts_data <- read_delim(nhts_file, delim = "\t", show_col_types = FALSE)
+          } else {
+            print_msg(paste("Unsupported file format for", basename(nhts_file)))
+            next
+          }
           
           # Get column names
           print_msg(paste("NHTS data has", ncol(nhts_data), "columns and", nrow(nhts_data), "rows"))
@@ -248,6 +416,10 @@ fetch_transportation_data <- function(years,
   
   # Function to get All Transit Database data
   get_transit_data <- function() {
+    # Find available local transit files
+    local_files <- find_local_transportation_files()
+    transit_files <- local_files$transit
+    
     # All Transit Database data is available from 2012 onwards
     # We'll try to get data for each year in the requested range
     
@@ -270,13 +442,21 @@ fetch_transportation_data <- function(years,
         next
       }
       
-      # Define file paths
+      # Check for existing files that match this year
+      year_pattern <- paste0("transit.*", year, "|", year, ".*transit|connectivity.*", year)
+      existing_files <- grep(year_pattern, transit_files, value = TRUE)
+      
+      # Default file path if we need to download
       transit_file <- file.path(data_dir, paste0("transit_", year, ".csv"))
       
       # Check if we need to download
-      need_download <- !file.exists(transit_file) || refresh_cache
+      need_download <- length(existing_files) == 0 || refresh_cache
       
-      if (need_download) {
+      # Use existing file if available
+      if (length(existing_files) > 0 && !need_download) {
+        transit_file <- existing_files[1]  # Use the first (newest) file
+        print_msg(paste("Using existing transit file for", year, ":", basename(transit_file)))
+      } else if (need_download && !offline_mode) {
         # All Transit URL - placeholder structure
         transit_url <- paste0(
           "https://alltransit.cnt.org/data/download/counties_", 
@@ -284,23 +464,70 @@ fetch_transportation_data <- function(years,
           ".csv"
         )
         
+        # Make sure the directory exists
+        if (!dir.exists(dirname(transit_file))) {
+          dir.create(dirname(transit_file), recursive = TRUE)
+        }
+        
         # Try to download
-        if (!safe_download(transit_url, transit_file, paste("All Transit data for", year))) {
+        success <- safe_download(transit_url, transit_file, paste("All Transit data for", year))
+        
+        if (!success) {
           print_msg(paste("Could not download All Transit data for", year))
-          # All Transit data might require registration
+          
+          # Try to find any transit files for any year
+          if (length(transit_files) > 0) {
+            # If we have any transit files, use the newest one available
+            transit_file <- transit_files[1]
+            found_year <- as.numeric(regmatches(basename(transit_file), regexpr("\\d{4}", basename(transit_file)))[1])
+            if (!is.na(found_year)) {
+              print_msg(paste("Using available transit data from", found_year, "as fallback"))
+            } else {
+              print_msg(paste("Using available transit file:", basename(transit_file)))
+            }
+          } else {
+            print_msg("No transit data files found")
+            next
+          }
+        }
+      } else if (offline_mode && need_download) {
+        print_msg(paste("Offline mode: Cannot download transit data for", year))
+        
+        # Look for any available transit files
+        if (length(transit_files) > 0) {
+          transit_file <- transit_files[1]
+          found_year <- as.numeric(regmatches(basename(transit_file), regexpr("\\d{4}", basename(transit_file)))[1])
+          if (!is.na(found_year)) {
+            print_msg(paste("Using available transit data from", found_year))
+          } else {
+            print_msg(paste("Using available transit file:", basename(transit_file)))
+          }
+        } else {
+          print_msg("No transit data files found in offline mode")
           next
         }
-      } else {
-        print_msg(paste("Using existing All Transit file for", year))
       }
       
       # Process the data if file exists
       if (file.exists(transit_file)) {
-        print_msg(paste("Reading All Transit data for", year))
+        print_msg(paste("Reading transit data from", basename(transit_file)))
         
         # Read the file
         tryCatch({
-          transit_data <- read_csv(transit_file, show_col_types = FALSE)
+          # Determine file type and read accordingly
+          file_ext <- tolower(tools::file_ext(transit_file))
+          
+          if (file_ext == "csv") {
+            transit_data <- read_csv(transit_file, show_col_types = FALSE)
+          } else if (file_ext %in% c("xlsx", "xls")) {
+            transit_data <- read_excel(transit_file)
+          } else if (file_ext == "txt") {
+            # Try to determine delimiter
+            transit_data <- read_delim(transit_file, delim = "\t", show_col_types = FALSE)
+          } else {
+            print_msg(paste("Unsupported file format for", basename(transit_file)))
+            next
+          }
           
           # Get column names
           print_msg(paste("Transit data has", ncol(transit_data), "columns and", nrow(transit_data), "rows"))
@@ -386,6 +613,10 @@ fetch_transportation_data <- function(years,
   
   # Function to get ACS transportation data
   get_acs_data <- function() {
+    # Find available local ACS transportation files
+    local_files <- find_local_transportation_files()
+    acs_files <- local_files$acs_transport
+    
     # ACS has data on zero-vehicle households and commute metrics
     # Available from 2005 onwards
     
@@ -407,29 +638,61 @@ fetch_transportation_data <- function(years,
         next
       }
       
-      # Define file paths
+      # Check for existing files that match this year
+      year_pattern <- paste0("acs.*transport.*", year, "|", year, ".*acs.*transport|commut.*", year)
+      existing_files <- grep(year_pattern, acs_files, value = TRUE)
+      
+      # Default file path if we need to download
       acs_file <- file.path(data_dir, paste0("acs_transportation_", year, ".csv"))
       
       # Check if we need to download
-      need_download <- !file.exists(acs_file) || refresh_cache
+      need_download <- length(existing_files) == 0 || refresh_cache
       
-      if (need_download) {
+      # Use existing file if available
+      if (length(existing_files) > 0 && !need_download) {
+        acs_file <- existing_files[1]  # Use the first (newest) file
+        print_msg(paste("Using existing ACS transportation file for", year, ":", basename(acs_file)))
+      } else {
         # In a real implementation, we would use Census API
         # This would require a Census API key and proper queries
         print_msg(paste("ACS transportation data file not found for", year))
-        # No automatic download option for ACS without API key
-        next
-      } else {
-        print_msg(paste("Using existing ACS transportation file for", year))
+        
+        # Try to find any ACS transportation files for any year
+        if (length(acs_files) > 0) {
+          # If we have any ACS transportation files, use the newest one available
+          acs_file <- acs_files[1]
+          found_year <- as.numeric(regmatches(basename(acs_file), regexpr("\\d{4}", basename(acs_file)))[1])
+          if (!is.na(found_year)) {
+            print_msg(paste("Using available ACS transportation data from", found_year, "as fallback"))
+          } else {
+            print_msg(paste("Using available ACS transportation file:", basename(acs_file)))
+          }
+        } else {
+          print_msg("No ACS transportation data files found")
+          next
+        }
       }
       
       # Process the data if file exists
       if (file.exists(acs_file)) {
-        print_msg(paste("Reading ACS transportation data for", year))
+        print_msg(paste("Reading ACS transportation data from", basename(acs_file)))
         
         # Read the file
         tryCatch({
-          acs_data <- read_csv(acs_file, show_col_types = FALSE)
+          # Determine file type and read accordingly
+          file_ext <- tolower(tools::file_ext(acs_file))
+          
+          if (file_ext == "csv") {
+            acs_data <- read_csv(acs_file, show_col_types = FALSE)
+          } else if (file_ext %in% c("xlsx", "xls")) {
+            acs_data <- read_excel(acs_file)
+          } else if (file_ext == "txt") {
+            # Try to determine delimiter
+            acs_data <- read_delim(acs_file, delim = "\t", show_col_types = FALSE)
+          } else {
+            print_msg(paste("Unsupported file format for", basename(acs_file)))
+            next
+          }
           
           # Get column names
           print_msg(paste("ACS data has", ncol(acs_data), "columns and", nrow(acs_data), "rows"))
@@ -503,24 +766,77 @@ fetch_transportation_data <- function(years,
     }
   }
   
-  # Get data from different transportation sources
-  nhts_data <- get_nhts_data()
-  transit_data <- get_transit_data()
-  acs_data <- get_acs_data()
-  
-  # Combine all data sources
-  transportation_data_list <- list()
-  
-  if (!is.null(nhts_data) && nrow(nhts_data) > 0) {
-    transportation_data_list[["nhts"]] <- nhts_data
-  }
-  
-  if (!is.null(transit_data) && nrow(transit_data) > 0) {
-    transportation_data_list[["transit"]] <- transit_data
-  }
-  
-  if (!is.null(acs_data) && nrow(acs_data) > 0) {
-    transportation_data_list[["acs"]] <- acs_data
+  # Get data from different transportation sources - use parallel processing if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+    print_msg("Using parallel processing to fetch data from multiple transportation sources")
+    
+    # Define the data sources to fetch
+    data_sources <- c("nhts", "transit", "acs")
+    
+    # Create a function to process one data source
+    process_data_source <- function(source) {
+      print_msg(paste("Processing transportation data source:", source))
+      
+      if (source == "nhts") {
+        return(get_nhts_data())
+      } else if (source == "transit") {
+        return(get_transit_data())
+      } else if (source == "acs") {
+        return(get_acs_data())
+      } else {
+        return(NULL)
+      }
+    }
+    
+    # Use future.apply to process data sources in parallel
+    # Set up progress reporting if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      # Create a progress handler
+      progressr::handlers(progressr::handler_progress())
+      
+      # Process with progress tracking
+      transportation_data_sources <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(data_sources))
+        
+        future.apply::future_lapply(data_sources, function(source) {
+          result <- process_data_source(source)
+          p(message = paste("Processed transportation data source:", source))
+          return(result)
+        })
+      })
+    } else {
+      # Process without progress tracking
+      transportation_data_sources <- future.apply::future_lapply(data_sources, process_data_source)
+    }
+    
+    # Convert results to named list
+    names(transportation_data_sources) <- data_sources
+    
+    # Filter out NULL results
+    transportation_data_list <- transportation_data_sources[!sapply(transportation_data_sources, is.null)]
+    transportation_data_list <- transportation_data_list[sapply(transportation_data_list, function(x) !is.null(x) && nrow(x) > 0)]
+    
+  } else {
+    # Sequential processing
+    print_msg("Using sequential processing to fetch data from multiple transportation sources")
+    nhts_data <- get_nhts_data()
+    transit_data <- get_transit_data()
+    acs_data <- get_acs_data()
+    
+    # Combine all data sources
+    transportation_data_list <- list()
+    
+    if (!is.null(nhts_data) && nrow(nhts_data) > 0) {
+      transportation_data_list[["nhts"]] <- nhts_data
+    }
+    
+    if (!is.null(transit_data) && nrow(transit_data) > 0) {
+      transportation_data_list[["transit"]] <- transit_data
+    }
+    
+    if (!is.null(acs_data) && nrow(acs_data) > 0) {
+      transportation_data_list[["acs"]] <- acs_data
+    }
   }
   
   # Process if we have data
@@ -582,10 +898,8 @@ fetch_transportation_data <- function(years,
       # Process each county separately for interpolation
       counties <- unique(combined_transportation_data$GEOID)
       
-      # List to store interpolated data
-      interp_data_list <- list()
-      
-      for (county in counties) {
+      # Define function to interpolate a single county
+      interpolate_county <- function(county) {
         # Get data for this county
         county_data <- combined_transportation_data %>%
           filter(GEOID == county) %>%
@@ -662,8 +976,43 @@ fetch_transportation_data <- function(years,
           }
         }
         
-        # Add to list
-        interp_data_list[[county]] <- county_grid
+        return(county_grid)
+      }
+      
+      # Process counties in parallel if enabled
+      interp_data_list <- if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+        print_msg(paste("Using parallel processing for county interpolation with", length(counties), "counties"))
+        
+        # Setup progress tracking if available
+        if (requireNamespace("progressr", quietly = TRUE)) {
+          progressr::handlers(progressr::handler_progress())
+          result_list <- progressr::with_progress({
+            p <- progressr::progressor(steps = length(counties))
+            
+            future.apply::future_lapply(counties, function(county) {
+              result <- interpolate_county(county)
+              p(message = paste("Processed county", county))
+              return(result)
+            })
+          })
+        } else {
+          # No progress tracking
+          result_list <- future.apply::future_lapply(counties, interpolate_county)
+        }
+        
+        # Convert to named list
+        names(result_list) <- counties
+        result_list
+      } else {
+        # Sequential processing
+        print_msg(paste("Using sequential processing for county interpolation with", length(counties), "counties"))
+        result_list <- list()
+        
+        for (county in counties) {
+          result_list[[county]] <- interpolate_county(county)
+        }
+        
+        result_list
       }
       
       # Combine all counties
@@ -700,107 +1049,8 @@ fetch_transportation_data <- function(years,
     print_msg(paste("Cached transportation data to:", cache_file))
     
     return(combined_transportation_data)
-  } else if (allow_simulation) {
-    # Create simulated data
-    print_msg("No transportation data found. Creating simulated data...")
-    
-    # Transportation variables to simulate
-    transportation_vars <- c(
-      "vehicle_miles_traveled_per_capita" = "Annual vehicle miles traveled per capita",
-      "transportation_cost_burden_pct" = "Transportation costs as percentage of household income",
-      "zero_vehicle_households_pct" = "Percentage of households with no vehicles",
-      "public_transit_trips_per_capita" = "Public transit trips per capita",
-      "transit_connectivity_index" = "Measure of transit connectivity",
-      "transit_access_jobs" = "Number of jobs accessible by transit within 30 minutes",
-      "transit_performance_index" = "Composite measure of transit performance"
-    )
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Add simulated values for each variable
-      for (var_name in names(transportation_vars)) {
-        if (var_name == "vehicle_miles_traveled_per_capita") {
-          # Typically 8,000-15,000 miles per year
-          year_data[[var_name]] <- runif(nrow(year_data), 8000, 15000)
-        } else if (var_name == "transportation_cost_burden_pct") {
-          # Typically 10-25% of income
-          year_data[[var_name]] <- runif(nrow(year_data), 10, 25)
-        } else if (var_name == "zero_vehicle_households_pct") {
-          # Typically 2-20% depending on urban/rural
-          year_data[[var_name]] <- runif(nrow(year_data), 2, 20)
-        } else if (var_name == "public_transit_trips_per_capita") {
-          # Typically 0-100 trips per year, higher in urban areas
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        } else if (var_name == "transit_connectivity_index") {
-          # Typically 0-10 scale
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 10)
-        } else if (var_name == "transit_access_jobs") {
-          # Typically 0-500,000 jobs
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 500000)
-        } else if (var_name == "transit_performance_index") {
-          # Typically 0-100 scale
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        } else {
-          # Default - 0-100 range
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Transportation Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated transportation data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
+    # No data available - create empty dataset with NAs and provide clear error messages
     print_msg("No transportation data available and simulation not allowed. Creating empty dataset with NAs.")
     
     # Get variable list for transportation variables
@@ -883,21 +1133,32 @@ if (!is_sourced()) {
   # Test for last 5 years
   test_years <- (current_year-4):current_year
   
+  # Check for required packages for parallel processing
+  has_parallel_deps <- requireNamespace("future", quietly = TRUE) && 
+                       requireNamespace("future.apply", quietly = TRUE)
+  
+  # Use parallel processing if dependencies are available
+  use_parallel <- has_parallel_deps
+  if (use_parallel) {
+    cat("Using parallel processing for transportation data fetching test\n")
+  } else {
+    cat("Parallel processing dependencies not available, using sequential processing\n")
+  }
+  
   # Test the function
   result <- fetch_transportation_data(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = list(
       direct = "direct",
       interpolated = "interpolated",
       extrapolated = "extrapolated",
-      simulated = "simulated",
       missing = NA,
       imputed = "imputed"
-    )
+    ),
+    parallel = use_parallel
   )
   
   # Report data quality metrics

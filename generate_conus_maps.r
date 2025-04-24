@@ -4,6 +4,26 @@
 # This script generates maps for the Continental United States (CONUS)
 # for each variable and year in the SDOH dataset.
 
+# Function to check and install required packages
+install_required_packages <- function(packages) {
+  new_packages <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
+  if (length(new_packages) > 0) {
+    cat("Installing required packages:", paste(new_packages, collapse = ", "), "\n")
+    install.packages(new_packages)
+  }
+}
+
+# List of required packages
+required_packages <- c(
+  "dplyr", "ggplot2", "sf", "DBI", "duckdb", 
+  "tidyr", "readr", "stringr", "RColorBrewer", 
+  "viridis", "gridExtra"
+)
+
+# Install any missing packages
+install_required_packages(required_packages)
+
+# Load required packages
 library(dplyr)
 library(ggplot2)
 library(sf)

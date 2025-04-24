@@ -97,9 +97,47 @@ create_unified_database <- function(processed_data,
   ")
   
   # Extract unique counties from processed data
+  # Check if state_fips and state_name are available
+  columns_to_use <- c("geoid")
+  if ("state_fips" %in% names(processed_data)) {
+    columns_to_use <- c(columns_to_use, "state_fips")
+  }
+  if ("state_name" %in% names(processed_data)) {
+    columns_to_use <- c(columns_to_use, "state_name")
+  }
+  
+  # Select available columns
   unique_counties <- processed_data %>%
-    select(geoid, name, state_fips, state_name) %>%
+    select(all_of(columns_to_use)) %>%
     distinct()
+  
+  # Add missing columns if needed
+  if (!"state_fips" %in% names(unique_counties)) {
+    unique_counties$state_fips <- substr(unique_counties$geoid, 1, 2)
+    log_message("Added state_fips column derived from geoid",
+               level = "INFO", show_console = TRUE)
+  }
+  
+  if (!"state_name" %in% names(unique_counties)) {
+    # Create a state lookup table
+    state_lookup <- data.frame(
+      state_fips = sprintf("%02d", 1:56),
+      state_name = c(state.name, "District of Columbia", 
+                    "Puerto Rico", "Virgin Islands", 
+                    "Guam", "American Samoa", "Northern Mariana Islands"),
+      stringsAsFactors = FALSE
+    )
+    
+    # Join to get state names
+    unique_counties <- unique_counties %>%
+      left_join(state_lookup, by = "state_fips")
+    
+    log_message("Added state_name column from lookup table",
+               level = "INFO", show_console = TRUE)
+  }
+  
+  # Add county name
+  unique_counties$name <- paste("County", unique_counties$geoid)
   
   # Insert counties if they don't exist yet
   if (dbGetQuery(con, "SELECT COUNT(*) FROM counties")[1,1] == 0) {
@@ -157,7 +195,14 @@ create_unified_database <- function(processed_data,
   
   # Process the data for insertion (convert from wide to long format)
   # First, identify the columns that need to be pivoted (excluding metadata)
-  metadata_cols <- c("geoid", "name", "state_fips", "state_name", "year")
+  # Ensure we only include metadata columns that actually exist in the processed data
+  metadata_cols <- c("geoid", "year")
+  if ("state_fips" %in% names(processed_data)) {
+    metadata_cols <- c(metadata_cols, "state_fips")
+  }
+  if ("state_name" %in% names(processed_data)) {
+    metadata_cols <- c(metadata_cols, "state_name")
+  }
   
   # Get all the variable names from the crosswalk
   var_names <- crosswalk$variable_name
@@ -187,19 +232,21 @@ create_unified_database <- function(processed_data,
   batch_size <- 50
   total_batches <- ceiling(length(pivot_cols) / batch_size)
   
-  # Process in batches
-  for (batch in 1:total_batches) {
+  # Process in batches using parallel processing
+  process_batch <- function(batch) {
     start_idx <- (batch - 1) * batch_size + 1
     end_idx <- min(batch * batch_size, length(pivot_cols))
     batch_cols <- pivot_cols[start_idx:end_idx]
     
-    log_message(paste("Processing batch", batch, "of", total_batches, 
-                     "(variables", start_idx, "to", end_idx, ")"),
-               level = "INFO", show_console = TRUE)
+    message(paste("Processing batch", batch, "of", total_batches, 
+                 "(variables", start_idx, "to", end_idx, ")"))
+    
+    # Ensure metadata_cols only includes columns that exist
+    available_metadata_cols <- intersect(metadata_cols, names(processed_data))
     
     # Pivot the batch of variables to long format
     long_data <- processed_data %>%
-      select(all_of(c(metadata_cols, batch_cols))) %>%
+      select(all_of(c(available_metadata_cols, batch_cols))) %>%
       pivot_longer(
         cols = all_of(batch_cols),
         names_to = "variable_name",
@@ -260,14 +307,95 @@ create_unified_database <- function(processed_data,
       }
     }
     
+    return(long_data)
+  }
+  
+  # Set up parallel processing for batches
+  log_message("Setting up parallel processing for data transformation...",
+             level = "INFO", show_console = TRUE)
+  
+  # Determine cores to use for database operations
+  db_cores <- min(total_batches, parallel::detectCores() - 1)
+  db_cores <- max(db_cores, 2)  # Use at least 2 cores
+  
+  # Use future for parallel batch processing
+  future::plan(future::multisession, workers = db_cores)
+  log_message(paste("Using", db_cores, "cores for database batch processing"),
+             level = "INFO", show_console = TRUE)
+  
+  # Process batches in parallel
+  batch_numbers <- 1:total_batches
+  batch_results <- future.apply::future_lapply(batch_numbers, process_batch)
+  
+  # Process and insert each batch result
+  for (batch in 1:total_batches) {
+    # Calculate batch columns for this batch
+    start_idx <- (batch - 1) * batch_size + 1
+    end_idx <- min(batch * batch_size, length(pivot_cols))
+    batch_cols <- pivot_cols[start_idx:end_idx]
+    
+    # Get batch result
+    long_data <- batch_results[[batch]]
+    log_message(paste("Inserting batch", batch, "of", total_batches, "into database"),
+               level = "INFO", show_console = TRUE)
+    
+    # Generate timestamp
+    long_data$last_updated <- Sys.time()
+    
+    # Set other columns to NULL for now (will be updated later if flags exist)
+    long_data$data_quality <- NA_character_
+    long_data$data_source <- NA_character_
+    long_data$data_vintage <- NA_character_
+    long_data$interpolation_method <- NA_character_
+    long_data$ci_lower <- NA_real_
+    long_data$ci_upper <- NA_real_
+    long_data$confidence_level <- NA_real_
+    
+    # Check for interpolation flags and add them
+    for (var_name in batch_cols) {
+      interp_col <- paste0(var_name, "_interpolated")
+      if (interp_col %in% names(processed_data)) {
+        var_rows <- long_data$variable_name == var_name
+        
+        # Join interpolation info
+        interp_data <- processed_data %>%
+          select(geoid, year, !!sym(interp_col)) %>%
+          filter(!is.na(!!sym(interp_col)))
+        
+        if (nrow(interp_data) > 0) {
+          # Create a lookup to efficiently update long_data
+          interp_lookup <- interp_data %>%
+            mutate(
+              key = paste(geoid, year, sep = "_"),
+              interp_value = !!sym(interp_col)
+            )
+          
+          # Add a key to long_data for the lookup
+          long_data <- long_data %>%
+            mutate(key = ifelse(variable_name == var_name, 
+                              paste(geoid, year, sep = "_"), NA))
+          
+          # Update interpolation method for matches
+          for (i in 1:nrow(interp_lookup)) {
+            current_key <- interp_lookup$key[i]
+            current_value <- interp_lookup$interp_value[i]
+            
+            if (current_value) {
+              # Update the interpolation method
+              long_data$interpolation_method[long_data$key == current_key] <- "linear"
+            }
+          }
+          
+          # Remove the temporary key column
+          long_data$key <- NULL
+        }
+      }
+    }
+    
     # Insert this batch into the database
     dbWriteTable(con, "sdoh_data", long_data, append = TRUE)
     log_message(paste("Inserted", nrow(long_data), "data points for batch", batch),
                level = "INFO", show_console = TRUE)
-    
-    # Clear the long_data to free memory
-    rm(long_data)
-    gc()
   }
   
   # Create indices for faster queries

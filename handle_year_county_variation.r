@@ -1,4 +1,4 @@
-#\!/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 
 # handle_year_county_variation.r
 # This script modifies the SDOH pipeline to properly handle variations
@@ -10,12 +10,12 @@ library(readr)
 library(stringr)
 
 # Define is_sourced function if it doesn't exist
-if (\!exists("is_sourced")) {
+if (!exists("is_sourced")) {
   is_sourced <- function() {
     # Check if the calling environment is the global environment
     # If it's not, the function is being sourced
     parent_env <- parent.frame()
-    return(\!identical(parent_env, .GlobalEnv))
+    return(!identical(parent_env, .GlobalEnv))
   }
 }
 
@@ -24,7 +24,7 @@ handle_year_county_variation <- function() {
   
   # Step 1: Find the process_extended_data.r file
   process_file <- "process_extended_data.r"
-  if (\!file.exists(process_file)) {
+  if (!file.exists(process_file)) {
     alt_locations <- c(
       "R/process_extended_data.r",
       "../process_extended_data.r"
@@ -39,7 +39,7 @@ handle_year_county_variation <- function() {
     }
   }
   
-  if (\!file.exists(process_file)) {
+  if (!file.exists(process_file)) {
     cat("ERROR: Could not find process_extended_data.r\n")
     return(FALSE)
   }
@@ -128,12 +128,12 @@ handle_year_county_variation <- function() {
     # Check if simulated data is being flagged
     has_simulation_flag <- any(grepl("simulated", process_content[quality_section[1]:min(quality_section[1] + 30, length(process_content))]))
     
-    if (\!has_simulation_flag) {
+    if (!has_simulation_flag) {
       cat("Adding simulation detection to data quality flags...\n")
       
       # Find the data_quality case_when statement
       case_when_end <- quality_section[1]
-      while (case_when_end < length(process_content) && \!grepl("\\)", process_content[case_when_end])) {
+      while (case_when_end < length(process_content) && !grepl("\\)", process_content[case_when_end])) {
         case_when_end <- case_when_end + 1
       }
       
@@ -162,7 +162,7 @@ handle_year_county_variation <- function() {
   
   # Step 8: Update the pipeline to ensure variables reflect reality
   pipeline_file <- "unified_sdoh_pipeline.r"
-  if (\!file.exists(pipeline_file)) {
+  if (!file.exists(pipeline_file)) {
     alt_locations <- c(
       "R/unified_sdoh_pipeline.r",
       "../unified_sdoh_pipeline.r"
@@ -177,14 +177,14 @@ handle_year_county_variation <- function() {
     }
   }
   
-  if (\!file.exists(pipeline_file)) {
+  if (!file.exists(pipeline_file)) {
     cat("ERROR: Could not find unified_sdoh_pipeline.r\n")
     return(FALSE)
   }
   
   # Create a backup of the pipeline file if we haven't already
   backup_pipeline <- paste0(pipeline_file, ".bak")
-  if (\!file.exists(backup_pipeline)) {
+  if (!file.exists(backup_pipeline)) {
     file.copy(pipeline_file, backup_pipeline, overwrite = TRUE)
     cat("Created backup of pipeline file at:", backup_pipeline, "\n")
   }
@@ -251,7 +251,249 @@ handle_year_county_variation <- function() {
   return(TRUE)
 }
 
+#' Perform temporal interpolation for missing county-year combinations
+#'
+#' This function:
+#' 1. Identifies missing year-county combinations
+#' 2. Checks if values exist for years before and after
+#' 3. Performs linear (or other) interpolation between the bracketing years
+#' 4. Flags the interpolated values with a data quality indicator
+#'
+#' @param data A dataframe containing county data with geoid and year columns
+#' @param variable_names A character vector of variable names to interpolate
+#' @param method The interpolation method to use ("linear", "spline", or "stine")
+#' @param min_gap_size The minimum gap size to interpolate (in years)
+#' @param max_gap_size The maximum gap size to interpolate (in years)
+#' @return A dataframe with interpolated values and quality flags
+interpolate_temporal_gaps <- function(data, variable_names, method = "linear",
+                                     min_gap_size = 1, max_gap_size = 5) {
+  # Verify the function has the required packages
+  required_packages <- c("dplyr", "tidyr", "zoo")
+  for (pkg in required_packages) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      message(paste("Installing required package:", pkg))
+      install.packages(pkg, repos = "https://cloud.r-project.org")
+      library(pkg, character.only = TRUE)
+    } else {
+      library(pkg, character.only = TRUE)
+    }
+  }
+  
+  # Validate input data
+  if (!all(c("geoid", "year") %in% names(data))) {
+    stop("Input data must contain 'geoid' and 'year' columns")
+  }
+  
+  # Ensure variable names exist in the data
+  valid_vars <- intersect(variable_names, names(data))
+  if (length(valid_vars) == 0) {
+    warning("None of the specified variables exist in the data. Returning original data.")
+    return(data)
+  }
+  
+  # Filter to only the variables we need for interpolation
+  missing_vars <- setdiff(variable_names, valid_vars)
+  if (length(missing_vars) > 0) {
+    warning(paste("The following variables were not found in the data:",
+                 paste(missing_vars, collapse = ", ")))
+  }
+  
+  cat("Interpolating", length(valid_vars), "variables for temporal gaps...\n")
+  
+  # Create result dataframe (start with original data)
+  result_data <- data
+  
+  # Initialize progress tracking
+  total_vars <- length(valid_vars)
+  var_counter <- 0
+  
+  # Process each county separately
+  counties <- unique(data$geoid)
+  cat("Processing", length(counties), "counties...\n")
+  
+  # Track interpolation counts
+  interp_counts <- list(
+    total_counties = length(counties),
+    total_variables = length(valid_vars),
+    interpolated_values = 0,
+    counties_with_interpolation = 0
+  )
+  
+  # Counties with interpolation
+  counties_with_interp <- character(0)
+  
+  # Process each variable
+  for (var in valid_vars) {
+    var_counter <- var_counter + 1
+    if (var_counter %% 5 == 0 || var_counter == total_vars) {
+      cat("Processing variable", var_counter, "of", total_vars, ":", var, "\n")
+    }
+    
+    # Create quality flag column name for this variable
+    quality_col <- paste0(var, "_data_quality")
+    
+    # Ensure quality column exists
+    if (!quality_col %in% names(result_data)) {
+      result_data[[quality_col]] <- "direct"
+    }
+    
+    # For each county, interpolate missing years
+    county_counter <- 0
+    for (county in counties) {
+      county_counter <- county_counter + 1
+      if (county_counter %% 500 == 0) {
+        cat("  Processing county", county_counter, "of", length(counties), "\n")
+      }
+      
+      # Extract data for this county
+      county_data <- data %>%
+        filter(geoid == county) %>%
+        arrange(year)
+      
+      # Skip if fewer than 2 years of data
+      if (nrow(county_data) < 2) {
+        next
+      }
+      
+      # Find years with data for this variable
+      has_data <- !is.na(county_data[[var]])
+      
+      # Skip if all values are NA or if all values are present
+      if (sum(has_data) < 2 || sum(has_data) == nrow(county_data)) {
+        next
+      }
+      
+      # Get years with and without data
+      years_with_data <- county_data$year[has_data]
+      all_years <- county_data$year
+      
+      # Identify missing years that can be interpolated
+      interp_count <- 0
+      for (i in 1:(length(all_years) - 1)) {
+        # Skip if current year has data
+        if (all_years[i] %in% years_with_data) {
+          next
+        }
+        
+        # Find bracketing years with data
+        prev_year_idx <- max(which(years_with_data < all_years[i]), 0)
+        next_year_idx <- min(which(years_with_data > all_years[i]), length(years_with_data) + 1)
+        
+        # Skip if no bracketing years
+        if (prev_year_idx == 0 || next_year_idx > length(years_with_data)) {
+          next
+        }
+        
+        prev_year <- years_with_data[prev_year_idx]
+        next_year <- years_with_data[next_year_idx]
+        
+        # Check if gap is within acceptable size
+        gap_size <- next_year - prev_year
+        if (gap_size < min_gap_size || gap_size > max_gap_size) {
+          next
+        }
+        
+        # Get values for bracketing years
+        prev_value <- county_data[[var]][county_data$year == prev_year]
+        next_value <- county_data[[var]][county_data$year == next_year]
+        
+        # Skip if either value is NA
+        if (is.na(prev_value) || is.na(next_value)) {
+          next
+        }
+        
+        # Calculate interpolated value based on method
+        if (method == "linear") {
+          # Linear interpolation
+          for (j in (prev_year + 1):(next_year - 1)) {
+            if (j %in% all_years) {
+              idx <- which(all_years == j)
+              weight <- (j - prev_year) / (next_year - prev_year)
+              interp_value <- prev_value + weight * (next_value - prev_value)
+              
+              # Update the result data
+              result_idx <- which(result_data$geoid == county & result_data$year == j)
+              if (length(result_idx) > 0) {
+                result_data[[var]][result_idx] <- interp_value
+                result_data[[quality_col]][result_idx] <- "interpolated"
+                interp_count <- interp_count + 1
+              }
+            }
+          }
+        } else if (method == "spline" || method == "stine") {
+          # Need at least 4 points for spline, so we'll only use it if we have enough data
+          if (sum(has_data) >= 4) {
+            # Create a series with all available data points
+            all_values <- county_data[[var]]
+            names(all_values) <- county_data$year
+            
+            # Interpolate using spline
+            if (method == "spline") {
+              interp_values <- zoo::na.spline(all_values, na.rm = TRUE)
+            } else {
+              # Stineman interpolation
+              interp_values <- zoo::na.stine(all_values, na.rm = TRUE)
+            }
+            
+            # Update the result data for years in the gap
+            for (j in (prev_year + 1):(next_year - 1)) {
+              if (j %in% all_years) {
+                idx <- which(all_years == j)
+                
+                # Update the result data
+                result_idx <- which(result_data$geoid == county & result_data$year == j)
+                if (length(result_idx) > 0) {
+                  result_data[[var]][result_idx] <- interp_values[as.character(j)]
+                  result_data[[quality_col]][result_idx] <- "interpolated"
+                  interp_count <- interp_count + 1
+                }
+              }
+            }
+          } else {
+            # Fall back to linear interpolation for small data sets
+            for (j in (prev_year + 1):(next_year - 1)) {
+              if (j %in% all_years) {
+                idx <- which(all_years == j)
+                weight <- (j - prev_year) / (next_year - prev_year)
+                interp_value <- prev_value + weight * (next_value - prev_value)
+                
+                # Update the result data
+                result_idx <- which(result_data$geoid == county & result_data$year == j)
+                if (length(result_idx) > 0) {
+                  result_data[[var]][result_idx] <- interp_value
+                  result_data[[quality_col]][result_idx] <- "interpolated"
+                  interp_count <- interp_count + 1
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      # Update tracking if interpolation occurred
+      if (interp_count > 0) {
+        interp_counts$interpolated_values <- interp_counts$interpolated_values + interp_count
+        if (!county %in% counties_with_interp) {
+          counties_with_interp <- c(counties_with_interp, county)
+        }
+      }
+    }
+  }
+  
+  # Update final count of counties with interpolation
+  interp_counts$counties_with_interpolation <- length(counties_with_interp)
+  
+  # Print summary
+  cat("\nInterpolation summary:\n")
+  cat("  Total counties processed:", interp_counts$total_counties, "\n")
+  cat("  Total variables processed:", interp_counts$total_variables, "\n")
+  cat("  Counties with interpolated values:", interp_counts$counties_with_interpolation, "\n")
+  cat("  Total interpolated values:", interp_counts$interpolated_values, "\n")
+  
+  return(result_data)
+}
+
 # Execute the function if run directly
-if (\!is_sourced()) {
+if (!is_sourced()) {
   handle_year_county_variation()
 }

@@ -6,12 +6,6 @@ This document explains how the IHME (Institute for Health Metrics and Evaluation
 
 IHME provides county-level life expectancy estimates by race/ethnicity and gender. The data is available from 2000-2019 and is located in the `data/ihme/CSV` directory.
 
-The data contains life expectancy estimates for:
-- Overall population
-- By gender (male/female)
-- By race/ethnicity (White, Black, Hispanic, Asian, American Indian/Alaska Native, etc.)
-- By combinations of gender and race/ethnicity
-
 ## File Formats
 
 The IHME data is provided in two different formats:
@@ -30,68 +24,104 @@ Files with names like `IHME_USA_LE_COUNTY_RACE_ETHN_2000_2019_LT_2019_BOTH_Y2022
 ### 2. Legacy Format
 
 Files with names like `IHME_USA_LE_COUNTY_BOTH_2019.CSV` use the legacy format with columns:
-- `Location` - County name
-- `FIPS` - County FIPS code
-- `State` - State abbreviation
-- `LE_both` - Life expectancy for both genders
-- `LE_male` - Life expectancy for males
-- `LE_female` - Life expectancy for females
-- `SD_both` - Standard deviation for both genders
-- `SD_male` - Standard deviation for males
-- `SD_female` - Standard deviation for females
-- `LE_race_white` - Life expectancy for White population
-- `LE_race_black` - Life expectancy for Black population
-- `LE_race_hispanic` - Life expectancy for Hispanic population
-- `LE_race_asian` - Life expectancy for Asian population
+- `location_id` - County FIPS code
+- `location_name` - County name
+- `LE_both` - Life expectancy for all races combined
+- `LE_race_aian` - Life expectancy for American Indian/Alaska Native
+- `LE_race_api` - Life expectancy for Asian/Pacific Islander
+- `LE_race_black` - Life expectancy for Black
+- `LE_race_latino` - Life expectancy for Hispanic/Latino
+- `LE_race_white` - Life expectancy for White
 
 ## Race/Ethnicity Mapping
 
-To standardize the race/ethnicity values across our dataset, we map the IHME race names to our standard codes:
+Our pipeline standardizes race/ethnicity categories across all data sources. For IHME data, we use the following mapping:
 
-| IHME Race Name | Our Code | Description |
-|----------------|----------|-------------|
-| Total | all | All races/ethnicities |
-| Latino | hispanic | Hispanic/Latino |
-| White | nhw | Non-Hispanic White |
-| Black | nhb | Non-Hispanic Black |
-| Asian | nhasian | Non-Hispanic Asian |
-| AIAN | nhaian | Non-Hispanic American Indian/Alaska Native |
-| NHPI | nhpi | Non-Hispanic Pacific Islander |
-| API | nhasian | Asian/Pacific Islander (older files) |
-| Multiple races | multirace | Multiple races |
-| Other | multirace | Other races |
+| IHME Category | Standardized Category |
+|--------------|------------------------|
+| Total | total |
+| White | white |
+| Black | black |
+| AIAN | aian (American Indian/Alaska Native) |
+| API | nhasian (Asian, Native Hawaiian, Pacific Islander combined) |
+| Latino | latino |
 
-## Variable Naming Convention
+## Variable Structure
 
-The life expectancy variables follow this naming pattern:
-- `life_expectancy` - Overall life expectancy
-- `life_expectancy_[gender]` - Life expectancy by gender (male/female)
-- `life_expectancy_[race]` - Life expectancy by race/ethnicity
-- `life_expectancy_[gender]_[race]` - Life expectancy by gender and race/ethnicity
-- `le_[race]_lower_ci` - Lower confidence interval
-- `le_[race]_upper_ci` - Upper confidence interval
+The IHME data is processed into the following standardized variables:
+
+1. `life_expectancy_total` - Life expectancy for all races/ethnicities combined
+2. `life_expectancy_white` - Life expectancy for White, non-Hispanic
+3. `life_expectancy_black` - Life expectancy for Black, non-Hispanic
+4. `life_expectancy_aian` - Life expectancy for American Indian/Alaska Native, non-Hispanic
+5. `life_expectancy_nhasian` - Life expectancy for Asian/Pacific Islander, non-Hispanic
+6. `life_expectancy_latino` - Life expectancy for Hispanic/Latino, any race
+
+For each race/ethnicity category, we also create gender-specific variables:
+- `life_expectancy_[race]_male`
+- `life_expectancy_[race]_female`
 
 ## Processing Steps
 
-1. Detect file format based on column names
-2. Extract year and gender from filename
-3. For standard format:
-   - Map race_name to standardized race codes
-   - Rename columns to match our schema
-   - Add year and gender columns
-4. For legacy format:
-   - Extract year from filename
-   - Create separate entries for overall, male, and female life expectancy
-   - Process race-specific columns
-   - Create confidence intervals using standard deviations where available
-5. Format FIPS codes consistently
-6. Combine all data
+1. **Format Detection**: The code automatically detects the format of each file by:
+   - Checking for "RACE_ETHN" in the filename (standard format)
+   - Examining column names for "val" vs "LE_*" patterns
 
-## Total IHME Variables
+2. **Standard Format Processing**:
+   - Files are filtered by year
+   - Data is grouped by county FIPS, race/ethnicity, and sex
+   - Values are pivoted to create variables in the standardized format
 
-Our dataset includes 29 IHME life expectancy variables with different combinations of:
-- Gender (overall, male, female)
-- Race/ethnicity (overall, Hispanic, Black, White, Asian, American Indian, etc.)
-- Confidence intervals (lower and upper bounds)
+3. **Legacy Format Processing**:
+   - Race-specific columns are renamed according to our standardization rules
+   - Data is restructured to match the format of processed standard-format data
 
-These variables provide a comprehensive view of life expectancy differences across demographic groups.
+4. **Race/Ethnicity Standardization**:
+   - All race/ethnicity categories are mapped to our standardized categories
+   - Special handling for "API" mapping to "nhasian"
+
+5. **Missing Data Handling**:
+   - Missing values are preserved as NA
+   - No simulated data is generated to fill gaps
+   - Data quality flags track the source of each value (direct vs interpolated)
+
+6. **Performance Optimizations**:
+   - Adaptive parallel processing with automatic strategy selection (multicore/multisession) and fallback to sequential
+   - Automatic dataset size estimation to determine optimal processing approach
+   - Memory-efficient key processing with context-aware batch sizing (larger batches for parallel mode)
+   - Chunked processing for race/ethnicity data with robust error handling
+   - Optimized county-level data merging with parallel batch processing and conservative memory limits
+   - Vectorization of key creation for single-column cases
+   - Progress tracking with the progressr package for better visibility
+   - Intelligent garbage collection to free memory between processing phases
+
+## Data Usage
+
+The processed IHME data provides 29 distinct variables:
+- 1 overall life expectancy variable
+- 4 race/ethnicity-specific life expectancy variables
+- 4 race/ethnicity and gender-specific (male) life expectancy variables
+- 4 race/ethnicity and gender-specific (female) life expectancy variables
+- 16 year-specific versions of these variables for all available years
+
+## Error Handling
+
+If IHME data files are missing, the system:
+1. Searches multiple directories for IHME data files
+2. Checks both standard and legacy formats
+3. Returns a clear error message if no files are found
+4. Provides an empty dataframe with the proper structure
+5. Logs the error with guidance on where to obtain the data
+
+## Testing
+
+To test proper IHME data processing, run:
+```r
+Rscript test_ihme_processing.r
+```
+
+This script tests:
+1. Standard format detection and processing
+2. Legacy format detection and processing
+3. Race/ethnicity mapping
+4. Data quality flagging

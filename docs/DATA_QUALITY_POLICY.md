@@ -12,84 +12,74 @@ As of April 2025, the project has a strict **No Simulated Data** policy. This me
 
 ## Data Quality Flags
 
-The following data quality flags are used to track the origin of each data point:
+To maintain transparency about data origins, each variable includes a data quality flag:
 
-- `direct` - Data comes directly from an authoritative source
-- `interpolated` - Data is interpolated from real values (filling gaps in time series)
-- `extrapolated` - Data is extrapolated from real values (extending beyond available years)
-- `imputed` - Data is imputed from other real values using statistical methods
-- `missing` - Data is not available and marked as missing (NA values)
+- `direct`: Data obtained directly from an authoritative source
+- `extrapolated`: Data extended beyond the available time series
+- `interpolated`: Data estimated between existing data points
+- `missing`: No data available (replaces any previously simulated data)
 
 ## File Format Support
 
-The pipeline now supports multiple file formats for each data source:
+Each data source must properly handle all known file formats:
 
 ### IHME Life Expectancy Data
-- Standard format: `IHME_USA_LE_COUNTY_RACE_ETHN_*.CSV` files with columns:
-  - `location_id`, `location_name`, `race_name`, `sex_name`, `val`, `lower`, `upper`
-- Legacy format: `IHME_USA_LE_COUNTY_*.CSV` files with columns:
-  - `Location`, `FIPS`, `LE_both`, `LE_male`, `LE_female`, `LE_race_*`
-
-### Traffic Safety Data
-- FARS CSV files:
-  - Direct FARS files with columns: `state`, `county`, etc.
-  - Pre-processed county-level files with `fips`, `year`, `traffic_fatality_count`, etc.
-- CDC WONDER data:
-  - CSV files with columns: `year`, `fips`, `deaths`, `population`, `crude_rate`
+- **Standard Format**: Files with `RACE_ETHN` in the name, containing `race_name`, `sex_name`, and `val` columns
+- **Legacy Format**: Files without `RACE_ETHN` in the name, containing `LE_both`, `LE_male`, `LE_female` columns
 
 ### Census Bureau Data
-- ACS data: `acs*_county_*.csv` files with proper column headers
-- Decennial Census: `dec_county_*.csv` files
-- Population Estimates: `pep_county_*.csv` files
+- **ACS**: American Community Survey files
+- **Decennial**: Decennial Census files
+- **PEP**: Population Estimates Program files
 
-## Error Messages
+### Traffic Safety Data
+- **FARS**: Fatality Analysis Reporting System data
+- **CDC WONDER**: Centers for Disease Control and Prevention mortality data
 
-When required data is missing, the pipeline now provides clear error messages that:
+## Error Handling
 
-1. Identify which data is missing
-2. Explain where to get the missing data
-3. Describe the required file format
-4. Provide file placement instructions
+When data is missing, the system follows this approach:
 
-Example:
-```
-ERROR: No Census data files found. Please download Census data.
-Required files should be in one of the following directories: data/census_acs, data/census_decennial, data/census_pep, data/cache/census
-File names should include 'acs', 'dec', or 'pep' with a CSV extension.
-```
+1. Check multiple locations for data files
+2. Check multiple file formats
+3. Check cache for previously processed data
+4. If all checks fail, return an empty dataframe with the proper structure
+5. Log a clear error message indicating:
+   - What data is missing
+   - Where to find or download the required data
+   - How to place data in the expected location
 
-## Handling Missing Data
+## Testing and Validation
 
-Instead of generating simulated data when real data is unavailable:
+A comprehensive test suite (see `test_data_formats.r`) verifies:
 
-1. Variables will be marked as `NA` with a `_data_quality` flag set to "missing"
-2. Error messages will indicate what data is missing and how to obtain it
-3. The pipeline will continue processing other available data sources
-4. The final database will include quality metadata to filter out missing values
+1. All data sources can handle multiple file formats
+2. No simulated data is used anywhere in the codebase
+3. Error messages are clear and helpful when data is missing
+4. Data quality flags accurately represent the data's origin
+
+## Race/Ethnicity Standardization
+
+For demographic data, the following standard race/ethnicity categories are used:
+
+- `white`: White, non-Hispanic
+- `black`: Black or African American, non-Hispanic
+- `aian`: American Indian and Alaska Native, non-Hispanic
+- `asian`: Asian, non-Hispanic
+- `nhpi`: Native Hawaiian and Pacific Islander, non-Hispanic
+- `latino`: Hispanic or Latino, any race
+- `multi`: Two or more races, non-Hispanic
+- `nhasian`: Asian, Native Hawaiian, and Pacific Islander (combined category)
+- `total`: All races and ethnicities combined
 
 ## Fallback Order
 
-When multiple sources may provide the same data:
+When primary data sources are not available, the system will use this fallback order:
 
-1. Primary data files in standard locations
-2. Cached data files (if not forced to refresh)
-3. Alternative data formats (if available)
-4. Mark as missing (never generate simulated data)
+1. Primary data source (e.g., newest IHME dataset, newest ACS 5-year)
+2. Alternative vintage/year of the same data source (e.g., previous year ACS)
+3. Alternative related data source (e.g., ACS 1-year instead of 5-year)
+4. Cache of previously processed data (if available)
+5. Return empty dataset with clear error message
 
-## Data Validation
-
-All data goes through validation checks:
-
-1. Confirmation of proper file format
-2. Verification of required columns
-3. Standardization of column names and types
-4. Range checks for known values
-5. Consistency checks across sources
-
-## Quality Report
-
-After processing, the pipeline generates a data quality report showing:
-- Number of variables with direct data
-- Number of variables with interpolated data
-- Number of variables with extrapolated data 
-- Number of variables with missing data
+Importantly, fallback will NEVER include generating simulated data.

@@ -53,12 +53,12 @@ documentation:
 
 # API credentials (these will be overridden by environment variables if set)
 api_keys:
-  census_api_key: ""
+  census_api_key: "37631d786612af84f997a3c2ff73390376930c39"
   
 # IPUMS credentials (these will be overridden by environment variables if set)
 ipums:
-  username: ""
-  password: ""
+  username: "davidlary@me.com"
+  password: "PW-IPUMS-dt10051998!"
 
 # Traffic safety data options
 traffic_safety:

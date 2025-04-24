@@ -22,6 +22,8 @@ library(jsonlite)
 #' @param refresh_cache Whether to refresh the cache
 #' @param data_quality_flags List of flags for data quality
 #' @param offline_mode Whether to use offline mode (cached data only)
+#' @param parallel Whether to use parallel processing
+#' @param parallel_config Optional parallel processing configuration
 #'
 #' @return A data frame with built environment data by county
 fetch_built_environment_data <- function(years = 2010:2023,
@@ -38,7 +40,9 @@ fetch_built_environment_data <- function(years = 2010:2023,
                                          missing = NA,
                                          imputed = "imputed"
                                        ),
-                                       offline_mode = FALSE) {
+                                       offline_mode = FALSE,
+                                       parallel = FALSE,
+                                       parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -47,6 +51,57 @@ fetch_built_environment_data <- function(years = 2010:2023,
       message(msg)
     } else {
       cat(msg, "\n")
+    }
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for built environment data")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for built environment data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
     }
   }
   
@@ -384,8 +439,8 @@ fetch_built_environment_data <- function(years = 2010:2023,
     data_vintage = character()
   )
   
-  # Process each year
-  for (year_val in output_years) {
+  # Define function to process a single year
+  process_year <- function(year_val) {
     # Get data for this year
     sld_year_data <- sld_data %>% 
       filter(year == year_val) %>%
@@ -404,8 +459,41 @@ fetch_built_environment_data <- function(years = 2010:2023,
         data_vintage = paste0("BE ", year_val)
       )
     
-    # Add to final dataset
-    combined_data <- bind_rows(combined_data, combined_year)
+    return(combined_year)
+  }
+  
+  # Process years in parallel if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE) && length(output_years) > 1) {
+    print_msg(paste("Using parallel processing for", length(output_years), "years of built environment data"))
+    
+    # Setup progress tracking if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      progressr::handlers(progressr::handler_progress())
+      year_results <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(output_years))
+        
+        future.apply::future_lapply(output_years, function(year_val) {
+          result <- process_year(year_val)
+          p(message = paste("Processed built environment data for year", year_val))
+          return(result)
+        })
+      })
+    } else {
+      # No progress tracking
+      year_results <- future.apply::future_lapply(output_years, process_year)
+    }
+    
+    # Combine results
+    combined_data <- bind_rows(combined_data, year_results)
+  } else {
+    # Sequential processing
+    print_msg(paste("Using sequential processing for", length(output_years), "years of built environment data"))
+    
+    for (year_val in output_years) {
+      combined_year <- process_year(year_val)
+      # Add to final dataset
+      combined_data <- bind_rows(combined_data, combined_year)
+    }
   }
   
   # Filter to requested states and counties if provided
@@ -426,6 +514,18 @@ fetch_built_environment_data <- function(years = 2010:2023,
 
 # If the script is run directly (not sourced), run the function with default parameters
 if (!exists("is_sourced") || (is.logical(is_sourced) && !is_sourced)) {
-  result <- fetch_built_environment_data()
+  # Check for required packages for parallel processing
+  has_parallel_deps <- requireNamespace("future", quietly = TRUE) && 
+                       requireNamespace("future.apply", quietly = TRUE)
+  
+  # Use parallel processing if dependencies are available
+  use_parallel <- has_parallel_deps
+  if (use_parallel) {
+    cat("Using parallel processing for built environment data fetching test\n")
+  } else {
+    cat("Parallel processing dependencies not available, using sequential processing\n")
+  }
+  
+  result <- fetch_built_environment_data(parallel = use_parallel)
   print(head(result))
 }

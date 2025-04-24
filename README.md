@@ -77,40 +77,116 @@ The pipeline will use actual data from these sources when available, falling bac
 
 ### Installation
 
-1. Clone this repository:
-```
-git clone https://github.com/davidlary/US-SocialDeterminantsOfHealth.git
-cd US-SocialDeterminantsOfHealth
-```
+#### System Requirements
 
-2. Install required R packages:
-```
-Rscript R/install_packages.r
-```
+1. **Operating System**:
+   - Linux (Ubuntu 18.04+, CentOS 7+, etc.)
+   - macOS (10.15 Catalina or newer)
+   - Windows 10/11 with WSL2 recommended for best performance
 
-3. Set up credentials (required for full access to data sources):
-   - For Census data: `Rscript R/utilities/set_api_key.r YOUR_CENSUS_API_KEY`
-   - For IPUMS/NHGIS: `Rscript R/utilities/set_ipums_credentials.r YOUR_USERNAME YOUR_PASSWORD`
+2. **Hardware Requirements**:
+   - CPU: 4+ cores recommended for parallel processing
+   - RAM: Minimum 8GB, 16GB+ recommended for full dataset processing
+   - Storage: 10GB+ free space (additional space required for caching large datasets)
 
-4. Clear any existing database files before running with updated code:
-```
-rm -f data/sdoh_county.duckdb*
-```
+3. **Software Dependencies**:
+   - R version 4.0.0 or newer
+   - RStudio (optional but recommended)
+   - Git
+   - For spatial features:
+     - Linux: `sudo apt-get install libudunits2-dev libgdal-dev libgeos-dev libproj-dev`
+     - macOS: `brew install udunits gdal geos proj`
+     - Windows: Install Rtools and ensure PATH is set correctly
 
-5. Configure the YAML file (optional - see Configuration section below):
-```
-# Edit the configuration file to customize paths and settings
-vi R/config.yaml
-```
+#### Installation Steps
 
-6. Run the data pipeline:
-```
-# Run with the default configuration
-Rscript R/unified_sdoh_pipeline.r
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/davidlary/US-SocialDeterminantsOfHealth.git
+   cd US-SocialDeterminantsOfHealth
+   ```
 
-# OR specify a custom configuration file
-Rscript R/unified_sdoh_pipeline.r /path/to/custom_config.yaml
-```
+2. **Install Required R Packages**:
+
+   The project provides two installation options:
+   
+   **Option 1**: Install all packages (recommended for full functionality):
+   ```bash
+   Rscript R/install_packages.r
+   ```
+   
+   This will install all necessary packages including:
+   - Core packages: tidyverse, DBI, duckdb, data.table, zoo, sf, tigris, etc.
+   - Visualization: ggplot2, viridis, leaflet, plotly, etc.
+   - Data processing: imputeTS, forecast, furrr, future, etc.
+   - Machine learning: prophet, xgboost, tidymodels, etc.
+   - API: plumber, swagger
+
+   **Option 2**: Install only essential packages:
+   ```bash
+   Rscript R/install_missing_packages.r
+   ```
+   
+   This installs only the minimum required packages for basic functionality.
+
+   > **Note for Apple Silicon (M1/M2) Users**: Some packages may require special installation. If you encounter errors, try using:
+   > ```R
+   > options(repos = c(CRAN = "https://cloud.r-project.org"))
+   > install.packages("package_name", type = "binary")
+   > ```
+
+3. **Set Up API Credentials** (required for full access to data sources):
+   ```bash
+   # For Census Bureau data
+   Rscript R/utilities/set_api_key.r YOUR_CENSUS_API_KEY
+
+   # For IPUMS/NHGIS access
+   Rscript R/utilities/set_ipums_credentials.r YOUR_USERNAME YOUR_PASSWORD
+   ```
+
+   To obtain these credentials:
+   - Census API key: Register at https://api.census.gov/data/key_signup.html
+   - IPUMS/NHGIS: Create an account at https://usa.ipums.org/usa/
+
+4. **Clear Existing Database** (if updating from previous installation):
+   ```bash
+   rm -f data/sdoh_county.duckdb*
+   ```
+
+5. **Configure Settings** (optional):
+   ```bash
+   # Edit the configuration file to customize paths and settings
+   vi R/config.yaml
+   ```
+
+6. **Run the Pipeline**:
+   ```bash
+   # Run with default configuration
+   Rscript R/unified_sdoh_pipeline.r
+
+   # OR specify a custom configuration file
+   Rscript R/unified_sdoh_pipeline.r /path/to/custom_config.yaml
+   ```
+
+#### Troubleshooting Common Installation Issues
+
+1. **Package Installation Failures**:
+   - For sf/rgdal/rgeos: Ensure system dependencies are installed (see above)
+   - For rJava-based packages: Verify Java is installed and R can find it
+   - For prophet: May require Rtools on Windows or compiler tools on Linux/Mac
+
+2. **Memory Issues During Processing**:
+   - Adjust R memory limits: Add `options(future.globals.maxSize = 4 * 1024^3)` to the start of scripts
+   - On Windows: Use `memory.limit(size = 16000)` to increase R's memory allocation
+
+3. **File Permission Errors**:
+   - Ensure write permissions for the project directory
+   - For system-wide installation: Use sudo (Linux/Mac) or run as administrator (Windows)
+
+4. **Network/API Issues**:
+   - Check internet connection and firewall settings
+   - Verify API credentials are correctly configured
+   - Use the offline mode if APIs are unavailable: `--offline-mode=TRUE`
 
 ### Command Line Options
 
@@ -434,6 +510,52 @@ The SDOH pipeline has been refactored into a modular architecture to improve mai
 - **Simplified Testing**: Modules can be tested in isolation
 
 For detailed instructions on using and extending the modular pipeline, see the [Modular Pipeline Guide](docs/MODULAR_PIPELINE.md).
+
+### Temporal Interpolation for Missing Data (April 2025)
+
+The pipeline now features a sophisticated temporal interpolation system to handle missing county-year combinations in the data. This system:
+
+1. **Identifies Missing Data**: Detects gaps in the time series for each county and variable
+2. **Finds Bracketing Years**: Identifies available data points before and after each gap
+3. **Interpolates Values**: Uses statistical methods to estimate values for missing years
+4. **Tracks Data Quality**: Flags interpolated values with appropriate quality indicators
+
+#### Key Features
+
+1. **Multiple Interpolation Methods**:
+   - Linear interpolation (default) - Straight-line estimation between known points
+   - Spline interpolation - Smooth curves using cubic splines (requires 4+ data points)
+   - Stineman interpolation - Preserves monotonicity and local extrema
+
+2. **Configurable Parameters**:
+   - Minimum gap size - Only interpolate gaps of a certain size
+   - Maximum gap size - Avoid interpolating across very large gaps
+   - Method selection - Choose the appropriate interpolation algorithm
+
+3. **Comprehensive Quality Tracking**:
+   - All interpolated values are flagged with "interpolated" quality indicator
+   - Original values maintain their "direct" quality indicator
+   - Visualizations distinguish between direct and interpolated data points
+
+4. **Validation Tools**:
+   - Dedicated testing script to validate interpolation accuracy
+   - Visual comparison of original vs. interpolated values
+   - Error metrics (MAE, RMSE) to assess interpolation quality
+
+#### Usage Examples
+
+```r
+# Run the pipeline with default interpolation
+Rscript R/unified_sdoh_pipeline.r
+
+# Run with specific interpolation settings
+Rscript R/unified_sdoh_pipeline.r --interpolation-method=spline --max-gap-size=3
+
+# Disable interpolation completely
+Rscript R/unified_sdoh_pipeline.r --skip-interpolation
+```
+
+For detailed information about the temporal interpolation system, see the [Temporal Interpolation Guide](docs/TEMPORAL_INTERPOLATION.md).
 
 ### Traffic Safety Module (April 2025)
 

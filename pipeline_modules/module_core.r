@@ -53,26 +53,136 @@ log_message <- function(message, level = "INFO", show_console = TRUE, log_file =
   return(formatted_message)
 }
 
-# Setup parallel processing
-setup_parallel_processing <- function(use_parallel = TRUE, num_cores = NULL) {
+# Enhanced parallel processing setup with adaptive strategies and memory controls
+setup_parallel_processing <- function(use_parallel = TRUE, num_cores = NULL, 
+                                   strategy = "auto", memory_limit_gb = 8,
+                                   chunk_size = 100) {
   if (!use_parallel) {
+    log_message("Parallel processing disabled. Using sequential execution.",
+                level = "INFO", show_console = TRUE)
+    future::plan(future::sequential)
     return(FALSE)
   }
   
-  if (is.null(num_cores)) {
-    # Use default of N-1 cores (leave one for the OS)
-    num_cores <- parallel::detectCores() - 1
-    # Minimum of 2 cores
-    num_cores <- max(2, num_cores)
+  # Ensure required packages are available
+  required_packages <- c("future", "future.apply", "progressr")
+  missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+  
+  if (length(missing_packages) > 0) {
+    log_message(paste("Installing required parallel packages:", paste(missing_packages, collapse = ", ")),
+                level = "INFO", show_console = TRUE)
+    install.packages(missing_packages, repos = "https://cloud.r-project.org")
+    for (pkg in missing_packages) {
+      library(pkg, character.only = TRUE)
+    }
   }
   
-  # Set up parallel processing
-  future::plan(future::multisession, workers = num_cores)
+  # Determine optimal cores based on system resources
+  if (is.null(num_cores)) {
+    # Check available memory to avoid oversubscription
+    if (requireNamespace("pryr", quietly = TRUE)) {
+      # If pryr is available, use it to get system memory
+      tryCatch({
+        total_mem_gb <- pryr::mem_used() / 1024^3
+        # Calculate cores based on memory (1 core per 2GB available)
+        mem_cores <- floor(total_mem_gb / 2)
+        # Use the minimum of CPU cores - 1 or memory-based cores
+        cpu_cores <- parallel::detectCores() - 1
+        num_cores <- min(cpu_cores, mem_cores)
+        num_cores <- max(2, num_cores) # At least 2 cores
+      }, error = function(e) {
+        # Fallback to CPU-based approach
+        num_cores <- parallel::detectCores() - 1
+        num_cores <- max(2, num_cores) # At least 2 cores
+      })
+    } else {
+      # Use default of N-1 cores (leave one for the OS)
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+    }
+  }
   
-  log_message(paste("Parallel processing enabled with", num_cores, "cores using multisession strategy"),
+  # Determine the optimal strategy based on workload type
+  if (strategy == "auto") {
+    # Choose strategy based on OS and workload characteristics
+    if (.Platform$OS.type == "windows") {
+      # Windows performs better with multisession for most R workloads
+      strategy <- "multisession"
+    } else if (Sys.info()["sysname"] == "Darwin") {
+      # macOS can use multicore efficiently
+      strategy <- "multicore"
+    } else if (Sys.info()["sysname"] == "Linux") {
+      # Linux can use multicore efficiently
+      strategy <- "multicore"
+    } else {
+      # Default to multisession for unknown platforms
+      strategy <- "multisession"
+    }
+  }
+  
+  # Configure parallel processing strategy
+  log_message(paste("Setting up parallel processing with", num_cores, "cores using", strategy, "strategy"),
               level = "INFO", show_console = TRUE)
   
-  return(TRUE)
+  # Apply strategy
+  if (strategy == "multicore") {
+    future::plan(future::multicore, workers = num_cores)
+  } else if (strategy == "multisession") {
+    future::plan(future::multisession, workers = num_cores)
+  } else if (strategy == "cluster") {
+    # More advanced cluster setup
+    cl <- parallel::makeCluster(num_cores)
+    future::plan(future::cluster, workers = cl)
+  } else {
+    # Default to multisession for unknown strategies
+    future::plan(future::multisession, workers = num_cores)
+  }
+  
+  # Set memory limits for future tasks to avoid out-of-memory errors
+  memory_limit_bytes <- memory_limit_gb * 1024^3
+  options(future.globals.maxSize = memory_limit_bytes)
+  log_message(paste("Set future.globals.maxSize to", memory_limit_gb, "GB"),
+              level = "INFO", show_console = TRUE)
+  
+  # Set chunk size for chunked processing
+  options(future.chunk.size = chunk_size)
+  log_message(paste("Set future.chunk.size to", chunk_size, "items"),
+              level = "INFO", show_console = TRUE)
+  
+  # Platform-specific memory settings
+  if (.Platform$OS.type == "windows") {
+    tryCatch({
+      # Set memory limit on Windows
+      memory.limit(size = memory_limit_gb * 1024)
+      log_message(paste("Set Windows memory limit to", memory_limit_gb, "GB"),
+                level = "INFO", show_console = TRUE)
+    }, error = function(e) {
+      log_message("Warning: Could not set Windows memory limit.", level = "WARN", show_console = TRUE)
+    })
+  }
+  
+  # Setup progress reporting for parallel tasks
+  if (requireNamespace("progressr", quietly = TRUE)) {
+    progressr::handlers(progressr::handler_progress(
+      format = "[:bar] :percent :eta :message",
+      clear = FALSE,
+      width = 60
+    ))
+    options(progressr.enable = TRUE)
+    log_message("Progress reporting enabled for parallel tasks", level = "INFO", show_console = TRUE)
+  }
+  
+  log_message(paste("Parallel processing successfully configured with", num_cores, 
+                  "cores using", strategy, "strategy"),
+            level = "INFO", show_console = TRUE)
+  
+  return(list(
+    enabled = TRUE,
+    cores = num_cores,
+    strategy = strategy,
+    memory_limit_gb = memory_limit_gb,
+    chunk_size = chunk_size
+  ))
 }
 
 # Load config from YAML file and override with environment variables

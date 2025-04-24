@@ -60,7 +60,7 @@ fetch_traffic_safety_data <- function(years,
                                     imputed = "imputed"
                                   ),
                                   offline_mode = FALSE,
-                                  parallel = FALSE,
+                                  parallel = TRUE,
                                   parallel_config = NULL,
                                   census_data = NULL) {
   
@@ -68,6 +68,57 @@ fetch_traffic_safety_data <- function(years,
   traffic_cache_dir <- file.path(cache_dir, "traffic_safety")
   if (!dir.exists(traffic_cache_dir)) {
     dir.create(traffic_cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      message("Parallel processing enabled for traffic safety data")
+    } else {
+      # Basic parallel setup
+      message("Using basic parallel processing setup for traffic safety data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
+    }
   }
   
   # Default value for missing list elements
@@ -262,8 +313,9 @@ fetch_traffic_safety_data <- function(years,
           Sys.setenv(CENSUS_API_KEY = census_api_key)
         }
         
-        # Get population data for each year
-        all_pop_data <- lapply(years, function(year) {
+        # Get population data for each year using parallel processing if enabled
+        get_population_for_year <- function(year) {
+          message(paste("Fetching population data for year:", year))
           yr_data <- NULL
           
           if (year >= 2010) {
@@ -312,9 +364,13 @@ fetch_traffic_safety_data <- function(years,
               ) %>% 
                 rename(pop_2010 = value)
               
-              # Join 2000 and 2010 data
-              yr_data <- yr_2000 %>%
-                left_join(yr_2010, by = "GEOID", suffix = c("_2000", "_2010"))
+              # Join 2000 and 2010 data using global_safe_merge if available
+              if (exists("global_safe_merge")) {
+                yr_data <- global_safe_merge(yr_2000, yr_2010, by_cols = "GEOID")
+              } else {
+                yr_data <- yr_2000 %>%
+                  left_join(yr_2010, by = "GEOID", suffix = c("_2000", "_2010"))
+              }
               
               # Linear interpolation between 2000 and 2010
               factor <- (year - 2000) / 10
@@ -361,7 +417,33 @@ fetch_traffic_safety_data <- function(years,
           }
           
           return(yr_data)
-        })
+        }
+        
+        # Use parallel processing if enabled
+        all_pop_data <- if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+          message("Using parallel processing for population data fetching")
+          
+          # Setup progress tracking if available
+          if (requireNamespace("progressr", quietly = TRUE)) {
+            progressr::handlers(progressr::handler_progress())
+            progressr::with_progress({
+              p <- progressr::progressor(steps = length(years))
+              
+              future.apply::future_lapply(years, function(year) {
+                result <- get_population_for_year(year)
+                p(message = paste("Processed population data for year", year))
+                return(result)
+              })
+            })
+          } else {
+            # No progress tracking
+            future.apply::future_lapply(years, get_population_for_year)
+          }
+        } else {
+          # Fallback to sequential processing
+          message("Using sequential processing for population data fetching")
+          lapply(years, get_population_for_year)
+        }
         
         # Combine all years
         pop_data <- bind_rows(all_pop_data) %>%
