@@ -75,6 +75,254 @@ create_unified_database <- function(processed_data,
     }
   }
   
+  # Determine optimal database settings based on available system resources
+  optimize_db_settings <- function() {
+    # Determine available memory
+    memory_gb <- 8  # Default assumption: 8GB
+    total_memory_gb <- 8  # Default for total system memory
+    
+    # Try different methods to get system memory
+    if (requireNamespace("pryr", quietly = TRUE)) {
+      try({
+        # Use pryr if available
+        memory_bytes <- pryr::mem_used()
+        total_memory_bytes <- pryr::mem_total()
+        memory_gb <- memory_bytes / (1024^3)
+        total_memory_gb <- total_memory_bytes / (1024^3)
+      }, silent = TRUE)
+    } else if (.Platform$OS.type == "windows") {
+      try({
+        # Windows-specific method for total memory
+        memory_info <- system("wmic ComputerSystem get TotalPhysicalMemory /Value", intern = TRUE)
+        total_memory_gb <- as.numeric(gsub("TotalPhysicalMemory=", "", memory_info[2])) / (1024^3)
+        
+        # Windows-specific method for available memory
+        memory_info <- system("wmic OS get FreePhysicalMemory /Value", intern = TRUE)
+        memory_gb <- as.numeric(gsub("FreePhysicalMemory=", "", memory_info[2])) / (1024^2)
+      }, silent = TRUE)
+    } else if (Sys.info()["sysname"] == "Darwin") {
+      try({
+        # MacOS-specific method
+        memory_info <- system("sysctl -n hw.memsize", intern = TRUE)
+        total_memory_gb <- as.numeric(memory_info) / (1024^3)
+        
+        # Available memory is more complex on macOS, use a percentage of total
+        memory_gb <- total_memory_gb * 0.7  # Assume 70% available as a conservative estimate
+      }, silent = TRUE)
+    } else if (Sys.info()["sysname"] == "Linux") {
+      try({
+        # Linux method
+        memory_info <- system("free -g", intern = TRUE)
+        memory_lines <- strsplit(memory_info, "\n")[[1]]
+        total_line <- memory_lines[2]
+        total_parts <- strsplit(total_line, "\\s+")[[1]]
+        total_memory_gb <- as.numeric(total_parts[2])
+        memory_gb <- as.numeric(total_parts[7])  # Available memory
+      }, silent = TRUE)
+    }
+    
+    # Determine disk space and I/O capabilities
+    disk_gb <- 500  # Default assumption: 500GB
+    io_speed <- "moderate"  # Default assumption: moderate I/O speed
+    
+    try({
+      # Get information about available disk space
+      if (.Platform$OS.type == "windows") {
+        # Windows method
+        disk_info <- system("wmic logicaldisk get freespace,name /format:list", intern = TRUE)
+        drive_letter <- substr(getwd(), 1, 2)
+        for (line in disk_info) {
+          if (grepl(paste0("Name=", drive_letter), line)) {
+            free_space_line <- disk_info[which(grepl("FreeSpace=", disk_info))]
+            disk_gb <- as.numeric(gsub("FreeSpace=", "", free_space_line)) / (1024^3)
+            break
+          }
+        }
+      } else if (Sys.info()["sysname"] == "Darwin" || Sys.info()["sysname"] == "Linux") {
+        # MacOS/Linux method
+        disk_info <- system("df -k .", intern = TRUE)
+        disk_parts <- strsplit(disk_info[2], "\\s+")[[1]]
+        disk_gb <- as.numeric(disk_parts[4]) / (1024^2)
+      }
+      
+      # Try to estimate I/O speed (if possible)
+      io_test_file <- tempfile()
+      io_test_size <- 100 * 1024^2  # 100MB test file
+      
+      # Create a test file
+      set.seed(42)  # For reproducibility
+      test_data <- runif(io_test_size / 8)  # 8 bytes per numeric value
+      
+      # Write test
+      write_start <- Sys.time()
+      saveRDS(test_data, io_test_file)
+      write_end <- Sys.time()
+      write_time <- as.numeric(difftime(write_end, write_start, units = "secs"))
+      
+      # Read test
+      read_start <- Sys.time()
+      readRDS(io_test_file)
+      read_end <- Sys.time()
+      read_time <- as.numeric(difftime(read_end, read_start, units = "secs"))
+      
+      # Clean up
+      unlink(io_test_file)
+      
+      # Calculate I/O speed in MB/s
+      write_speed <- 100 / write_time  # MB/s
+      read_speed <- 100 / read_time    # MB/s
+      avg_speed <- (write_speed + read_speed) / 2
+      
+      # Classify I/O speed
+      if (avg_speed > 300) {
+        io_speed <- "very_fast"  # NVMe SSD or similar
+      } else if (avg_speed > 100) {
+        io_speed <- "fast"  # SATA SSD
+      } else if (avg_speed > 30) {
+        io_speed <- "moderate"  # Fast HDD or slow SSD
+      } else {
+        io_speed <- "slow"  # Typical HDD
+      }
+    }, silent = TRUE)
+    
+    # Determine CPU cores and capabilities
+    cpu_cores <- parallel::detectCores()
+    if (is.na(cpu_cores)) cpu_cores <- 4  # Default to 4 if detection fails
+    
+    # Try to determine if hyperthreading is enabled (logical vs physical cores)
+    hyperthreading <- FALSE
+    physical_cores <- cpu_cores
+    
+    try({
+      if (Sys.info()["sysname"] == "Darwin") {
+        # MacOS
+        physical_info <- system("sysctl -n hw.physicalcpu", intern = TRUE)
+        logical_info <- system("sysctl -n hw.logicalcpu", intern = TRUE)
+        physical_cores <- as.numeric(physical_info)
+        logical_cores <- as.numeric(logical_info)
+        hyperthreading <- logical_cores > physical_cores
+      } else if (Sys.info()["sysname"] == "Linux") {
+        # Linux
+        cpu_info <- system("lscpu", intern = TRUE)
+        for (line in cpu_info) {
+          if (grepl("Core\\(s\\) per socket", line)) {
+            cores_per_socket <- as.numeric(gsub(".*:\\s*", "", line))
+          }
+          if (grepl("Socket\\(s\\)", line)) {
+            sockets <- as.numeric(gsub(".*:\\s*", "", line))
+          }
+          if (grepl("Thread\\(s\\) per core", line)) {
+            threads_per_core <- as.numeric(gsub(".*:\\s*", "", line))
+          }
+        }
+        if (exists("cores_per_socket") && exists("sockets") && exists("threads_per_core")) {
+          physical_cores <- cores_per_socket * sockets
+          hyperthreading <- threads_per_core > 1
+        }
+      } else if (.Platform$OS.type == "windows") {
+        # Windows
+        cpu_info <- system("wmic cpu get NumberOfCores,NumberOfLogicalProcessors /Value", intern = TRUE)
+        for (line in cpu_info) {
+          if (grepl("NumberOfCores", line)) {
+            physical_cores <- as.numeric(gsub("NumberOfCores=", "", line))
+          }
+          if (grepl("NumberOfLogicalProcessors", line)) {
+            logical_cores <- as.numeric(gsub("NumberOfLogicalProcessors=", "", line))
+          }
+        }
+        if (exists("physical_cores") && exists("logical_cores")) {
+          hyperthreading <- logical_cores > physical_cores
+        }
+      }
+    }, silent = TRUE)
+    
+    # Calculate optimal settings
+    # Memory settings based on available system resources
+    memory_map_size <- min(total_memory_gb * 0.5, 32) * 1024^3  # Use up to 50% of RAM, max 32GB
+    
+    # Adjust threads based on workload types and hyperthreading
+    if (hyperthreading) {
+      # With hyperthreading, we want to avoid using all logical cores for CPU-bound tasks
+      threads <- min(physical_cores + 2, cpu_cores)
+    } else {
+      # Without hyperthreading, we can use more cores
+      threads <- min(cpu_cores - 1, 16)  # Use all cores minus 1, max 16
+    }
+    
+    # Create a temp directory for database operations
+    temp_directory <- file.path(tempdir(), "duckdb_temp")
+    dir.create(temp_directory, recursive = TRUE, showWarnings = FALSE)
+    
+    # Cache size based on available memory and I/O speed
+    # For faster I/O, we need less cache
+    cache_multiplier <- switch(io_speed,
+                              very_fast = 0.15,  # NVMe SSD - less cache needed
+                              fast = 0.2,       # SATA SSD
+                              moderate = 0.25,  # Fast HDD or slow SSD
+                              slow = 0.3)       # Typical HDD - more cache needed
+    
+    cache_size <- min(total_memory_gb * cache_multiplier, 6) * 1024^3
+    
+    # Settings for materialized views based on available memory
+    enable_materialized_views <- (total_memory_gb >= 4)  # Only use materialized views with >= 4GB RAM
+    
+    # More advanced view capabilities with more memory
+    advanced_materialized_view_options <- list(
+      count_distinct_views = (total_memory_gb >= 8),  # Enable views with COUNT DISTINCT with >= 8GB
+      complex_join_views = (total_memory_gb >= 12),   # Enable views with complex joins with >= 12GB
+      pivot_views = (total_memory_gb >= 16)           # Enable pivoted views with >= 16GB
+    )
+    
+    # Determine optimal index settings based on disk space and memory
+    index_strategy <- "standard"  # Default: create basic indices
+    
+    if (disk_gb > 200 && total_memory_gb >= 8) {
+      index_strategy <- "comprehensive"  # Create comprehensive indices
+    }
+    if (disk_gb > 500 && total_memory_gb >= 16) {
+      index_strategy <- "advanced"  # Create advanced indices including covering indices
+    }
+    
+    # Adaptive settings based on available resources
+    adaptive_settings <- list(
+      checkpoint_threshold = if (disk_gb > 500) "2GB" else "1GB",
+      workers_percentage = if (hyperthreading) 0.6 else 0.8,  # Percentage of cores to use
+      memory_limit = memory_map_size
+    )
+    
+    # Log the detected system configuration
+    cat(sprintf("System configuration detected: %.1f GB RAM, %d CPU cores (%d physical%s), %.1f GB disk, %s I/O\n", 
+                total_memory_gb, cpu_cores, physical_cores, 
+                ifelse(hyperthreading, " with hyperthreading", ""),
+                disk_gb, io_speed))
+    
+    return(list(
+      memory_map_size = memory_map_size,
+      threads = threads,
+      temp_directory = temp_directory,
+      cache_size = cache_size,
+      enable_materialized_views = enable_materialized_views,
+      advanced_view_options = advanced_materialized_view_options,
+      index_strategy = index_strategy,
+      adaptive_settings = adaptive_settings,
+      system_resources = list(
+        memory_gb = total_memory_gb,
+        cpu_cores = cpu_cores,
+        physical_cores = physical_cores,
+        hyperthreading = hyperthreading,
+        disk_gb = disk_gb,
+        io_speed = io_speed
+      )
+    ))
+  }
+  
+  # Get optimized settings
+  db_settings <- optimize_db_settings()
+  log_message(paste("Optimized database settings: memory_map=", 
+                   round(db_settings$memory_map_size / 1024^3, 1), "GB, threads=", 
+                   db_settings$threads),
+             level = "INFO", show_console = TRUE)
+  
   # Try to connect to the database with retry logic
   con <- NULL
   max_attempts <- 3
@@ -86,8 +334,71 @@ create_unified_database <- function(processed_data,
       log_message(paste("Connecting to database (attempt", attempt, "of", max_attempts, ")..."),
                  level = "INFO", show_console = TRUE)
       
-      con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
-      log_message("Successfully connected to database",
+      # Connect with optimized settings
+      con <- dbConnect(
+        duckdb::duckdb(), 
+        dbdir = unified_db_path,
+        read_only = FALSE,
+        n_threads = db_settings$threads
+      )
+      
+      # Apply optimization settings based on detected system resources
+      log_message("Applying optimized database settings...", 
+                 level = "INFO", show_console = TRUE)
+      
+      # Core settings
+      dbExecute(con, paste0("PRAGMA memory_limit='", db_settings$adaptive_settings$memory_limit, "'"))
+      dbExecute(con, paste0("PRAGMA threads=", db_settings$threads))
+      dbExecute(con, paste0("PRAGMA temp_directory='", db_settings$temp_directory, "'"))
+      dbExecute(con, paste0("PRAGMA memory_map_size=", db_settings$memory_map_size))
+      
+      # Adaptive checkpoint threshold based on disk space
+      dbExecute(con, paste0("PRAGMA checkpoint_threshold='", db_settings$adaptive_settings$checkpoint_threshold, "'"))
+      
+      # Sorting and ordering defaults
+      dbExecute(con, "PRAGMA default_null_order='nulls_first'")
+      dbExecute(con, "PRAGMA default_order='ASC'")
+      
+      # Cache settings based on I/O speed and available memory
+      dbExecute(con, paste0("PRAGMA cache_size=", db_settings$cache_size))
+      
+      # Enable memory-mapped I/O for large datasets
+      if (db_settings$system_resources$io_speed %in% c("fast", "very_fast")) {
+        # For fast I/O (SSDs), enable aggressive memory mapping
+        dbExecute(con, "PRAGMA use_direct_io=FALSE")  # Using buffered I/O with memory mapping is better for SSDs
+        dbExecute(con, "PRAGMA force_checkpoint=WAL")  # Use WAL mode for better write performance
+      } else {
+        # For slower I/O (HDDs), be more conservative with memory mapping
+        dbExecute(con, "PRAGMA use_direct_io=TRUE")  # Direct I/O can be better for HDDs in some cases
+        dbExecute(con, "PRAGMA force_checkpoint=FULL")  # Use full checkpoints for data integrity
+      }
+      
+      # Set optimal compression level based on CPU and disk space
+      if (db_settings$system_resources$disk_gb < 200) {
+        # Limited disk space - use higher compression
+        dbExecute(con, "PRAGMA compression='high'")
+      } else if (db_settings$system_resources$cpu_cores >= 8) {
+        # Lots of CPU cores available - use medium compression
+        dbExecute(con, "PRAGMA compression='medium'")
+      } else {
+        # Limited CPU - use light compression
+        dbExecute(con, "PRAGMA compression='light'")
+      }
+      
+      # Additional advanced settings for better performance
+      dbExecute(con, "PRAGMA experimental_parallel_csv=true")  # Enable parallel CSV reading
+      
+      # For systems with lots of memory, enable more aggressive optimizations
+      if (db_settings$system_resources$memory_gb >= 16) {
+        dbExecute(con, "PRAGMA maximize_threads=true")  # More aggressive thread usage
+        dbExecute(con, "PRAGMA memory_reuse=true")  # Allow memory reuse between queries
+        dbExecute(con, "PRAGMA verify_external=false")  # Skip verification of external data
+      }
+      
+      log_message(paste0("Successfully configured database with optimized settings (Memory: ", 
+                       round(db_settings$system_resources$memory_gb, 1), "GB, ",
+                       "Cores: ", db_settings$system_resources$cpu_cores, ", ",
+                       "I/O: ", db_settings$system_resources$io_speed, ")"),
                  level = "INFO", show_console = TRUE)
     }, error = function(e) {
       log_message(paste("Database connection attempt", attempt, "failed:", conditionMessage(e)),
@@ -116,6 +427,9 @@ create_unified_database <- function(processed_data,
     con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
     use_incremental <- FALSE  # Can't use incremental with in-memory DB
   }
+  
+  # Store settings in a global variable for the module
+  use_materialized_views <- db_settings$enable_materialized_views
   
   # Create metadata table to track processing status if it doesn't exist
   log_message("Setting up processing metadata tracking...",
@@ -640,53 +954,582 @@ create_unified_database <- function(processed_data,
     })
   }
   
-  # Create indices for faster queries
-  log_message("Creating database indices for faster queries...",
+  # Create optimized indices based on detected system resources and index strategy
+  log_message(paste0("Creating optimized database indices (strategy: ", db_settings$index_strategy, ")..."),
              level = "INFO", show_console = TRUE)
   
-  # Create indices for most common query patterns
-  dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid ON sdoh_data(geoid)")
-  dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_year ON sdoh_data(year)")
-  dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable ON sdoh_data(variable_name)")
-  dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid_year ON sdoh_data(geoid, year)")
-  dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable_year ON sdoh_data(variable_name, year)")
+  # Start transaction for faster index creation
+  dbExecute(con, "BEGIN TRANSACTION")
   
-  # Create a view for easier querying with wide-format compatibility
-  log_message("Creating convenient views for data access...",
+  # Track index creation time
+  index_start_time <- Sys.time()
+  created_indices <- 0
+  
+  # Create indices based on the determined index strategy
+  if (db_settings$index_strategy %in% c("standard", "comprehensive", "advanced")) {
+    # Basic indices - created for all strategies
+    log_message("Creating basic indices for primary query patterns...",
+               level = "INFO", show_console = TRUE)
+    
+    # Primary key indices
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid ON sdoh_data(geoid)")
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_year ON sdoh_data(year)")
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable ON sdoh_data(variable_name)")
+    created_indices <- created_indices + 3
+    
+    # Common composite indices for lookups
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid_year ON sdoh_data(geoid, year)")
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable_year ON sdoh_data(variable_name, year)")
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid_variable ON sdoh_data(geoid, variable_name)")
+    created_indices <- created_indices + 3
+  }
+  
+  # Additional indices for comprehensive and advanced strategies
+  if (db_settings$index_strategy %in% c("comprehensive", "advanced")) {
+    log_message("Creating comprehensive indices for optimized queries...",
+               level = "INFO", show_console = TRUE)
+    
+    # Advanced composite index with included columns for covering queries
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid_year_variable_covering 
+               ON sdoh_data(geoid, year, variable_name) 
+               INCLUDE (value, data_quality, data_source)")
+    created_indices <- created_indices + 1
+    
+    # Index for temporal queries (trends over time)
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable_year_value 
+               ON sdoh_data(variable_name, year, value)")
+    created_indices <- created_indices + 1
+    
+    # Index for quality filtering
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_data_quality 
+               ON sdoh_data(data_quality, variable_name, year)")
+    created_indices <- created_indices + 1
+    
+    # Index for source-based queries
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_data_source 
+               ON sdoh_data(data_source, variable_name)")
+    created_indices <- created_indices + 1
+    
+    # Index for timestamp-based filtering (useful for incremental updates)
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_last_updated 
+               ON sdoh_data(last_updated DESC)")
+    created_indices <- created_indices + 1
+  }
+  
+  # High-performance specialized indices for advanced strategy only
+  if (db_settings$index_strategy == "advanced") {
+    log_message("Creating advanced specialized indices for complex queries...",
+               level = "INFO", show_console = TRUE)
+    
+    # Expression-based indices for common computations
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_year_binned 
+               ON sdoh_data(year / 10)")  # For decade-based queries
+    created_indices <- created_indices + 1
+    
+    # Multi-column indices for complex filtering
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable_quality_value
+               ON sdoh_data(variable_name, data_quality, value)")
+    created_indices <- created_indices + 1
+    
+    # State-level aggregation index (state FIPS is first 2 chars of geoid)
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_state_variable_year
+               ON sdoh_data(SUBSTRING(geoid, 1, 2), variable_name, year)")
+    created_indices <- created_indices + 1
+    
+    # Value range index for range queries
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_value_range 
+               ON sdoh_data(variable_name, value)")
+    created_indices <- created_indices + 1
+    
+    # Advanced composite index for time series analysis
+    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_time_series 
+               ON sdoh_data(geoid, variable_name, year) 
+               INCLUDE (value, ci_lower, ci_upper)")
+    created_indices <- created_indices + 1
+    
+    # Partial indices for filtered queries (if supported)
+    tryCatch({
+      # Only index high-quality data
+      dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_high_quality_partial 
+                 ON sdoh_data(geoid, variable_name, year, value) 
+                 WHERE data_quality = 'high'")
+      created_indices <- created_indices + 1
+      
+      # Only index recent data (last 10 years)
+      current_year <- as.integer(format(Sys.Date(), "%Y"))
+      cutoff_year <- current_year - 10
+      dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_recent_data_partial 
+                          ON sdoh_data(geoid, variable_name, value) 
+                          WHERE year >= ", cutoff_year))
+      created_indices <- created_indices + 1
+    }, error = function(e) {
+      # Partial indices may not be supported in all DuckDB versions
+      log_message("Skipping partial indices (not supported in this DuckDB version)",
+                 level = "INFO", show_console = TRUE)
+    })
+  }
+  
+  # Commit transaction for indices
+  dbExecute(con, "COMMIT")
+  
+  # Calculate index creation time
+  index_end_time <- Sys.time()
+  index_time_taken <- difftime(index_end_time, index_start_time, units = "secs")
+  
+  # Analyze tables for query optimization
+  log_message("Analyzing tables to optimize query planning...",
              level = "INFO", show_console = TRUE)
   
-  dbExecute(con, "
-    CREATE OR REPLACE VIEW latest_data AS
-    SELECT 
-      c.geoid,
-      c.name,
-      c.state_fips,
-      c.state_name,
-      d.year,
-      d.variable_name,
-      d.value
-    FROM counties c
-    JOIN sdoh_data d ON c.geoid = d.geoid
-    WHERE (d.geoid, d.variable_name, d.year) IN (
-      SELECT geoid, variable_name, MAX(year) 
-      FROM sdoh_data 
-      GROUP BY geoid, variable_name
+  # Run ANALYZE to update statistics for query planning
+  dbExecute(con, "ANALYZE sdoh_data")
+  dbExecute(con, "ANALYZE counties")
+  dbExecute(con, "ANALYZE variables")
+  
+  # Log index creation summary
+  log_message(paste0("Created ", created_indices, " optimized indices in ", 
+                   round(as.numeric(index_time_taken), 2), " seconds"),
+             level = "INFO", show_console = TRUE)
+  
+  # Create optimized views and (optionally) materialized views
+  log_message("Creating optimized views for data access...",
+             level = "INFO", show_console = TRUE)
+             
+  # Start tracking view creation time
+  view_start_time <- Sys.time()
+  
+  # Define a list of essential views that will always be created
+  essential_views <- list(
+    # 1. View for latest data by county/variable
+    latest_data = "
+      CREATE OR REPLACE VIEW latest_data AS
+      SELECT 
+        c.geoid,
+        c.name,
+        c.state_fips,
+        c.state_name,
+        d.year,
+        d.variable_name,
+        d.value,
+        d.data_quality,
+        d.data_source
+      FROM counties c
+      JOIN sdoh_data d ON c.geoid = d.geoid
+      WHERE (d.geoid, d.variable_name, d.year) IN (
+        SELECT geoid, variable_name, MAX(year) 
+        FROM sdoh_data 
+        GROUP BY geoid, variable_name
+      )
+    ",
+    
+    # 2. View for data coverage analysis
+    data_coverage = "
+      CREATE OR REPLACE VIEW data_coverage AS
+      SELECT 
+        variable_name,
+        year,
+        COUNT(*) as county_count,
+        (SELECT COUNT(*) FROM counties) as total_counties,
+        CAST(COUNT(*) AS FLOAT) / (SELECT COUNT(*) FROM counties) * 100 as coverage_percent
+      FROM sdoh_data
+      GROUP BY variable_name, year
+      ORDER BY variable_name, year
+    ",
+    
+    # 3. View for time series analysis
+    county_time_series = "
+      CREATE OR REPLACE VIEW county_time_series AS
+      SELECT 
+        sd.geoid,
+        c.name as county_name,
+        c.state_name,
+        sd.year,
+        sd.variable_name,
+        sd.value,
+        sd.data_quality,
+        sd.data_source
+      FROM sdoh_data sd
+      JOIN counties c ON sd.geoid = c.geoid
+      ORDER BY sd.geoid, sd.variable_name, sd.year
+    "
+  )
+  
+  # Define additional views that depend on system resources
+  additional_views <- list()
+  
+  # Add pivot view for wide-format data if memory allows
+  if (db_settings$system_resources$memory_gb >= 4) {
+    additional_views$county_wide_latest <- "
+      CREATE OR REPLACE VIEW county_wide_latest AS
+      WITH vars AS (
+        SELECT DISTINCT variable_name 
+        FROM sdoh_data
+      )
+      SELECT 
+        c.geoid,
+        c.name,
+        c.state_fips,
+        c.state_name,
+        MAX(d.year) as latest_year,
+        GROUP_CONCAT(d.variable_name || ':' || CAST(d.value AS VARCHAR), ',') as variable_data
+      FROM counties c
+      LEFT JOIN sdoh_data d ON c.geoid = d.geoid
+      WHERE (d.geoid, d.variable_name, d.year) IN (
+        SELECT geoid, variable_name, MAX(year) 
+        FROM sdoh_data 
+        GROUP BY geoid, variable_name
+      )
+      GROUP BY c.geoid, c.name, c.state_fips, c.state_name
+    "
+  } else {
+    # Simpler pivot view that doesn't use GROUP_CONCAT for memory-limited systems
+    additional_views$county_wide_latest <- "
+      CREATE OR REPLACE VIEW county_wide_latest AS
+      SELECT 
+        c.geoid,
+        c.name,
+        c.state_fips,
+        c.state_name,
+        MAX(d.year) as latest_year
+      FROM counties c
+      LEFT JOIN sdoh_data d ON c.geoid = d.geoid
+      GROUP BY c.geoid, c.name, c.state_fips, c.state_name
+    "
+  }
+  
+  # Add state-level aggregation view if memory allows
+  if (db_settings$system_resources$memory_gb >= 6) {
+    additional_views$state_aggregation <- "
+      CREATE OR REPLACE VIEW state_aggregation AS
+      SELECT 
+        SUBSTRING(sd.geoid, 1, 2) as state_fips,
+        c.state_name,
+        sd.variable_name,
+        sd.year,
+        AVG(sd.value) as avg_value,
+        MIN(sd.value) as min_value,
+        MAX(sd.value) as max_value,
+        COUNT(*) as county_count
+      FROM sdoh_data sd
+      JOIN counties c ON sd.geoid = c.geoid
+      GROUP BY SUBSTRING(sd.geoid, 1, 2), c.state_name, sd.variable_name, sd.year
+      ORDER BY c.state_name, sd.variable_name, sd.year
+    "
+  }
+  
+  # Add time series trend view if memory allows
+  if (db_settings$system_resources$memory_gb >= 8) {
+    additional_views$variable_trends <- "
+      CREATE OR REPLACE VIEW variable_trends AS
+      WITH yearly_stats AS (
+        SELECT 
+          variable_name,
+          year,
+          AVG(value) as national_avg,
+          STDDEV(value) as national_stddev,
+          MIN(value) as national_min,
+          MAX(value) as national_max,
+          PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY value) as percentile_25,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) as median,
+          PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY value) as percentile_75
+        FROM sdoh_data
+        GROUP BY variable_name, year
+      )
+      SELECT 
+        variable_name,
+        year,
+        national_avg,
+        national_stddev,
+        national_min,
+        national_max,
+        median,
+        percentile_25,
+        percentile_75,
+        (national_avg - LAG(national_avg) OVER (PARTITION BY variable_name ORDER BY year)) as year_over_year_change,
+        (national_avg - LAG(national_avg, 5) OVER (PARTITION BY variable_name ORDER BY year)) as five_year_change
+      FROM yearly_stats
+      ORDER BY variable_name, year
+    "
+  }
+  
+  # Add correlation view if memory allows
+  if (db_settings$system_resources$memory_gb >= 12 && 
+      db_settings$advanced_view_options$complex_join_views) {
+    additional_views$variable_correlations <- "
+      CREATE OR REPLACE VIEW variable_correlations AS
+      WITH variable_pairs AS (
+        SELECT DISTINCT 
+          a.variable_name as var1,
+          b.variable_name as var2
+        FROM 
+          (SELECT DISTINCT variable_name FROM sdoh_data) a,
+          (SELECT DISTINCT variable_name FROM sdoh_data) b
+        WHERE 
+          a.variable_name < b.variable_name
+      ),
+      variable_data AS (
+        SELECT 
+          p.var1,
+          p.var2,
+          sd1.geoid,
+          sd1.year,
+          sd1.value as value1,
+          sd2.value as value2
+        FROM 
+          variable_pairs p
+          JOIN sdoh_data sd1 ON p.var1 = sd1.variable_name
+          JOIN sdoh_data sd2 ON p.var2 = sd2.variable_name AND sd1.geoid = sd2.geoid AND sd1.year = sd2.year
+        WHERE sd1.value IS NOT NULL AND sd2.value IS NOT NULL
+      )
+      SELECT 
+        var1,
+        var2,
+        CORR(value1, value2) as correlation_coefficient,
+        COUNT(*) as sample_size
+      FROM variable_data
+      GROUP BY var1, var2
+      HAVING COUNT(*) >= 30 -- Only show correlations with sufficient sample size
+      ORDER BY ABS(correlation_coefficient) DESC
+    "
+  }
+  
+  # Create essential views first
+  log_message("Creating essential views...", level = "INFO", show_console = TRUE)
+  created_views <- 0
+  
+  for (view_name in names(essential_views)) {
+    tryCatch({
+      dbExecute(con, essential_views[[view_name]])
+      created_views <- created_views + 1
+      log_message(paste("  - Created view:", view_name), level = "INFO", show_console = FALSE)
+    }, error = function(e) {
+      log_message(paste("Error creating", view_name, "view:", conditionMessage(e)),
+                 level = "WARN", show_console = TRUE)
+    })
+  }
+  
+  # Create additional views based on system resources
+  if (length(additional_views) > 0) {
+    log_message("Creating additional resource-dependent views...", level = "INFO", show_console = TRUE)
+    
+    for (view_name in names(additional_views)) {
+      tryCatch({
+        dbExecute(con, additional_views[[view_name]])
+        created_views <- created_views + 1
+        log_message(paste("  - Created view:", view_name), level = "INFO", show_console = FALSE)
+      }, error = function(e) {
+        log_message(paste("Error creating", view_name, "view:", conditionMessage(e)),
+                   level = "WARN", show_console = TRUE)
+      })
+    }
+  }
+  
+  # Define materialized views based on system memory availability
+  materialized_views <- list()
+  
+  # Basic materialized views (for systems with ≥ 4GB RAM)
+  if (db_settings$enable_materialized_views) {
+    # 1. Materialized view for latest data
+    materialized_views$latest_data_materialized <- list(
+      query = "
+        SELECT 
+          c.geoid,
+          c.name,
+          c.state_fips,
+          c.state_name,
+          d.year,
+          d.variable_name,
+          d.value,
+          d.data_quality,
+          d.data_source
+        FROM counties c
+        JOIN sdoh_data d ON c.geoid = d.geoid
+        WHERE (d.geoid, d.variable_name, d.year) IN (
+          SELECT geoid, variable_name, MAX(year) 
+          FROM sdoh_data 
+          GROUP BY geoid, variable_name
+        )
+      ",
+      indices = list(
+        "CREATE INDEX IF NOT EXISTS idx_latest_geoid ON latest_data_materialized(geoid)",
+        "CREATE INDEX IF NOT EXISTS idx_latest_variable ON latest_data_materialized(variable_name)",
+        "CREATE INDEX IF NOT EXISTS idx_latest_geoid_variable ON latest_data_materialized(geoid, variable_name)"
+      )
     )
-  ")
+    
+    # 2. Materialized view for data coverage
+    materialized_views$data_coverage_materialized <- list(
+      query = "
+        SELECT 
+          variable_name,
+          year,
+          COUNT(*) as county_count,
+          (SELECT COUNT(*) FROM counties) as total_counties,
+          CAST(COUNT(*) AS FLOAT) / (SELECT COUNT(*) FROM counties) * 100 as coverage_percent
+        FROM sdoh_data
+        GROUP BY variable_name, year
+        ORDER BY variable_name, year
+      ",
+      indices = list(
+        "CREATE INDEX IF NOT EXISTS idx_coverage_variable ON data_coverage_materialized(variable_name)",
+        "CREATE INDEX IF NOT EXISTS idx_coverage_year ON data_coverage_materialized(year)"
+      )
+    )
+  }
   
-  # Create a view for showing data coverage by variable and year
-  dbExecute(con, "
-    CREATE OR REPLACE VIEW data_coverage AS
-    SELECT 
-      variable_name,
-      year,
-      COUNT(*) as county_count,
-      (SELECT COUNT(*) FROM counties) as total_counties,
-      CAST(COUNT(*) AS FLOAT) / (SELECT COUNT(*) FROM counties) * 100 as coverage_percent
-    FROM sdoh_data
-    GROUP BY variable_name, year
-    ORDER BY variable_name, year
-  ")
+  # Additional materialized views for systems with more memory (≥ 8GB)
+  if (db_settings$system_resources$memory_gb >= 8 && 
+      db_settings$advanced_view_options$count_distinct_views) {
+    # 3. Materialized view for state-level statistics
+    materialized_views$state_stats_materialized <- list(
+      query = "
+        SELECT 
+          SUBSTRING(sd.geoid, 1, 2) as state_fips,
+          c.state_name,
+          sd.variable_name,
+          sd.year,
+          AVG(sd.value) as avg_value,
+          STDDEV(sd.value) as stddev_value,
+          MIN(sd.value) as min_value,
+          MAX(sd.value) as max_value,
+          COUNT(*) as county_count
+        FROM sdoh_data sd
+        JOIN counties c ON sd.geoid = c.geoid
+        GROUP BY SUBSTRING(sd.geoid, 1, 2), c.state_name, sd.variable_name, sd.year
+      ",
+      indices = list(
+        "CREATE INDEX IF NOT EXISTS idx_state_stats_fips ON state_stats_materialized(state_fips)",
+        "CREATE INDEX IF NOT EXISTS idx_state_stats_var_year ON state_stats_materialized(variable_name, year)"
+      )
+    )
+  }
+  
+  # Complex materialized views for high-memory systems (≥ 16GB)
+  if (db_settings$system_resources$memory_gb >= 16 && 
+      db_settings$advanced_view_options$pivot_views) {
+    # 4. Materialized pivot view with variable data as columns
+    # This creates a wide, spreadsheet-like format for the most recent year
+    # of each variable for each county
+    
+    # First, get a list of the most common variables to include in the pivot
+    top_variables <- tryCatch({
+      # Get the top 50 most common variables
+      result <- dbGetQuery(con, "
+        SELECT variable_name, COUNT(*) as count
+        FROM sdoh_data
+        GROUP BY variable_name
+        ORDER BY count DESC
+        LIMIT 50
+      ")
+      result$variable_name
+    }, error = function(e) {
+      log_message("Error getting top variables for pivot view", level = "WARN", show_console = TRUE)
+      character(0)  # Return empty character vector
+    })
+    
+    if (length(top_variables) > 0) {
+      # Create pivot query dynamically based on available variables
+      pivot_columns <- character(0)
+      for (var in top_variables) {
+        # Create a CASE expression for each variable
+        pivot_col <- paste0("
+          MAX(CASE WHEN d.variable_name = '", var, "' THEN d.value ELSE NULL END) as ", 
+          gsub("[^a-zA-Z0-9_]", "_", var))  # Clean variable name for column name
+        pivot_columns <- c(pivot_columns, pivot_col)
+      }
+      
+      # Combine all column expressions
+      pivot_cols_sql <- paste(pivot_columns, collapse = ",\n")
+      
+      # Create the full pivot query
+      pivot_query <- paste0("
+        SELECT 
+          c.geoid,
+          c.name,
+          c.state_fips,
+          c.state_name,
+          ", pivot_cols_sql, "
+        FROM counties c
+        LEFT JOIN (
+          SELECT sd.*
+          FROM sdoh_data sd
+          JOIN (
+            SELECT geoid, variable_name, MAX(year) as max_year
+            FROM sdoh_data
+            GROUP BY geoid, variable_name
+          ) latest ON sd.geoid = latest.geoid 
+              AND sd.variable_name = latest.variable_name 
+              AND sd.year = latest.max_year
+        ) d ON c.geoid = d.geoid
+        GROUP BY c.geoid, c.name, c.state_fips, c.state_name
+      ")
+      
+      # Add to materialized views list
+      materialized_views$county_wide_pivot_materialized <- list(
+        query = pivot_query,
+        indices = list(
+          "CREATE INDEX IF NOT EXISTS idx_pivot_geoid ON county_wide_pivot_materialized(geoid)",
+          "CREATE INDEX IF NOT EXISTS idx_pivot_state ON county_wide_pivot_materialized(state_fips)"
+        )
+      )
+    }
+  }
+  
+  # Create materialized views if enabled
+  created_materialized_views <- 0
+  
+  if (length(materialized_views) > 0 && db_settings$enable_materialized_views) {
+    log_message(paste0("Creating materialized views for faster access (", 
+                     length(materialized_views), " views)..."),
+               level = "INFO", show_console = TRUE)
+    
+    # Start transaction for better performance
+    dbExecute(con, "BEGIN TRANSACTION")
+    
+    for (view_name in names(materialized_views)) {
+      tryCatch({
+        # Drop existing materialized view if it exists
+        dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+        
+        # Create new materialized view
+        create_query <- paste0("CREATE TABLE ", view_name, " AS ", 
+                              materialized_views[[view_name]]$query)
+        dbExecute(con, create_query)
+        
+        # Create indices for the materialized view
+        for (idx_query in materialized_views[[view_name]]$indices) {
+          dbExecute(con, idx_query)
+        }
+        
+        created_materialized_views <- created_materialized_views + 1
+        log_message(paste("  - Created materialized view:", view_name), 
+                   level = "INFO", show_console = FALSE)
+      }, error = function(e) {
+        log_message(paste("Error creating materialized view", view_name, ":", conditionMessage(e)),
+                   level = "WARN", show_console = TRUE)
+      })
+    }
+    
+    # Commit transaction
+    dbExecute(con, "COMMIT")
+    
+    # Log summary
+    log_message(paste("Successfully created", created_materialized_views, 
+                    "of", length(materialized_views), "materialized views"),
+               level = "INFO", show_console = TRUE)
+  } else {
+    log_message("Skipping materialized views due to memory constraints (using regular views only)",
+               level = "INFO", show_console = TRUE)
+  }
+  
+  # Calculate view creation time
+  view_end_time <- Sys.time()
+  view_time_taken <- difftime(view_end_time, view_start_time, units = "secs")
+  
+  # Log view creation summary
+  log_message(paste0("Created ", created_views, " regular views and ", 
+                   created_materialized_views, " materialized views in ", 
+                   round(as.numeric(view_time_taken), 2), " seconds"),
+             level = "INFO", show_console = TRUE)
   
   # Get database stats
   total_rows <- dbGetQuery(con, "SELECT COUNT(*) FROM sdoh_data")[1,1]
@@ -695,6 +1538,335 @@ create_unified_database <- function(processed_data,
   year_count <- dbGetQuery(con, "SELECT COUNT(DISTINCT year) FROM sdoh_data")[1,1]
   min_year <- dbGetQuery(con, "SELECT MIN(year) FROM sdoh_data")[1,1]
   max_year <- dbGetQuery(con, "SELECT MAX(year) FROM sdoh_data")[1,1]
+  
+  # Function to refresh materialized views when in incremental mode
+  refresh_materialized_views <- function() {
+    log_message("Refreshing materialized views with latest data...",
+               level = "INFO", show_console = TRUE)
+    
+    # Skip if materialized views are disabled due to memory constraints
+    if (!db_settings$enable_materialized_views) {
+      log_message("Skipping materialized view refresh (disabled due to memory constraints)",
+                 level = "INFO", show_console = TRUE)
+      return(FALSE)
+    }
+    
+    # Start tracking the refresh time
+    refresh_start_time <- Sys.time()
+    refreshed_views <- 0
+    
+    # Get the list of materialized views that exist in the database
+    existing_views <- tryCatch({
+      dbGetQuery(con, "
+        SELECT name
+        FROM sqlite_master
+        WHERE type='table' AND name LIKE '%_materialized'
+      ")$name
+    }, error = function(e) {
+      log_message(paste("Error getting list of materialized views:", conditionMessage(e)),
+                 level = "WARN", show_console = TRUE)
+      character(0)  # Return empty character vector
+    })
+    
+    if (length(existing_views) == 0) {
+      log_message("No materialized views found to refresh",
+                 level = "INFO", show_console = TRUE)
+      return(FALSE)
+    }
+    
+    log_message(paste("Found", length(existing_views), "materialized views to refresh"),
+               level = "INFO", show_console = TRUE)
+    
+    # Create a function to refresh each view type
+    refresh_view <- function(view_name) {
+      tryCatch({
+        # Create temporary table name for refreshing
+        temp_table_name <- paste0("temp_", view_name)
+        
+        # Define refresh queries based on view type
+        if (view_name == "latest_data_materialized") {
+          # Create a temporary table with the latest data
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+          dbExecute(con, paste0("
+            CREATE TABLE ", temp_table_name, " AS
+            SELECT 
+              c.geoid,
+              c.name,
+              c.state_fips,
+              c.state_name,
+              d.year,
+              d.variable_name,
+              d.value,
+              d.data_quality,
+              d.data_source
+            FROM counties c
+            JOIN sdoh_data d ON c.geoid = d.geoid
+            WHERE (d.geoid, d.variable_name, d.year) IN (
+              SELECT geoid, variable_name, MAX(year) 
+              FROM sdoh_data 
+              GROUP BY geoid, variable_name
+            )
+          "))
+          
+          # Replace the old table with the new data
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+          dbExecute(con, paste0("ALTER TABLE ", temp_table_name, " RENAME TO ", view_name))
+          
+          # Recreate indices
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_latest_geoid ON ", view_name, "(geoid)"))
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_latest_variable ON ", view_name, "(variable_name)"))
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_latest_geoid_variable ON ", 
+                              view_name, "(geoid, variable_name)"))
+          
+          return(TRUE)
+        } 
+        else if (view_name == "data_coverage_materialized") {
+          # Create a temporary table with the data coverage information
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+          dbExecute(con, paste0("
+            CREATE TABLE ", temp_table_name, " AS
+            SELECT 
+              variable_name,
+              year,
+              COUNT(*) as county_count,
+              (SELECT COUNT(*) FROM counties) as total_counties,
+              CAST(COUNT(*) AS FLOAT) / (SELECT COUNT(*) FROM counties) * 100 as coverage_percent
+            FROM sdoh_data
+            GROUP BY variable_name, year
+            ORDER BY variable_name, year
+          "))
+          
+          # Replace the old table with the new data
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+          dbExecute(con, paste0("ALTER TABLE ", temp_table_name, " RENAME TO ", view_name))
+          
+          # Recreate indices
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_coverage_variable ON ", 
+                              view_name, "(variable_name)"))
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_coverage_year ON ", 
+                              view_name, "(year)"))
+          
+          return(TRUE)
+        }
+        else if (view_name == "state_stats_materialized") {
+          # Create a temporary table with state-level statistics
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+          dbExecute(con, paste0("
+            CREATE TABLE ", temp_table_name, " AS
+            SELECT 
+              SUBSTRING(sd.geoid, 1, 2) as state_fips,
+              c.state_name,
+              sd.variable_name,
+              sd.year,
+              AVG(sd.value) as avg_value,
+              STDDEV(sd.value) as stddev_value,
+              MIN(sd.value) as min_value,
+              MAX(sd.value) as max_value,
+              COUNT(*) as county_count
+            FROM sdoh_data sd
+            JOIN counties c ON sd.geoid = c.geoid
+            GROUP BY SUBSTRING(sd.geoid, 1, 2), c.state_name, sd.variable_name, sd.year
+          "))
+          
+          # Replace the old table with the new data
+          dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+          dbExecute(con, paste0("ALTER TABLE ", temp_table_name, " RENAME TO ", view_name))
+          
+          # Recreate indices
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_state_stats_fips ON ", 
+                              view_name, "(state_fips)"))
+          dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_state_stats_var_year ON ", 
+                              view_name, "(variable_name, year)"))
+          
+          return(TRUE)
+        }
+        else if (view_name == "county_wide_pivot_materialized") {
+          # For complex pivot view, we need to get the list of variables first
+          top_variables <- dbGetQuery(con, "
+            SELECT variable_name, COUNT(*) as count
+            FROM sdoh_data
+            GROUP BY variable_name
+            ORDER BY count DESC
+            LIMIT 50
+          ")$variable_name
+          
+          if (length(top_variables) > 0) {
+            # Create pivot query dynamically based on available variables
+            pivot_columns <- character(0)
+            for (var in top_variables) {
+              # Create a CASE expression for each variable
+              pivot_col <- paste0("
+                MAX(CASE WHEN d.variable_name = '", var, "' THEN d.value ELSE NULL END) as ", 
+                gsub("[^a-zA-Z0-9_]", "_", var))  # Clean variable name for column name
+              pivot_columns <- c(pivot_columns, pivot_col)
+            }
+            
+            # Combine all column expressions
+            pivot_cols_sql <- paste(pivot_columns, collapse = ",\n")
+            
+            # Create the full pivot query
+            pivot_query <- paste0("
+              CREATE TABLE ", temp_table_name, " AS
+              SELECT 
+                c.geoid,
+                c.name,
+                c.state_fips,
+                c.state_name,
+                ", pivot_cols_sql, "
+              FROM counties c
+              LEFT JOIN (
+                SELECT sd.*
+                FROM sdoh_data sd
+                JOIN (
+                  SELECT geoid, variable_name, MAX(year) as max_year
+                  FROM sdoh_data
+                  GROUP BY geoid, variable_name
+                ) latest ON sd.geoid = latest.geoid 
+                    AND sd.variable_name = latest.variable_name 
+                    AND sd.year = latest.max_year
+              ) d ON c.geoid = d.geoid
+              GROUP BY c.geoid, c.name, c.state_fips, c.state_name
+            ")
+            
+            # Create the temporary table
+            dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+            dbExecute(con, pivot_query)
+            
+            # Replace the old table with the new data
+            dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+            dbExecute(con, paste0("ALTER TABLE ", temp_table_name, " RENAME TO ", view_name))
+            
+            # Recreate indices
+            dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_pivot_geoid ON ", 
+                                view_name, "(geoid)"))
+            dbExecute(con, paste0("CREATE INDEX IF NOT EXISTS idx_pivot_state ON ", 
+                                view_name, "(state_fips)"))
+            
+            return(TRUE)
+          } else {
+            log_message("No variables found for pivot view - skipping refresh",
+                       level = "WARN", show_console = TRUE)
+            return(FALSE)
+          }
+        } else {
+          # For any other materialized view, try to get its definition from the database
+          # and use it to refresh the view
+          
+          # Get the view definition by examining the CREATE statement that generated it
+          view_def_query <- paste0("
+            SELECT sql FROM sqlite_master 
+            WHERE type='table' AND name='", view_name, "'
+          ")
+          
+          view_def <- dbGetQuery(con, view_def_query)
+          
+          if (nrow(view_def) > 0 && !is.na(view_def$sql[1])) {
+            # Parse the SQL to extract the query part after "AS"
+            sql_parts <- strsplit(view_def$sql[1], " AS ", fixed = TRUE)[[1]]
+            
+            if (length(sql_parts) >= 2) {
+              # Extract the SELECT statement after "AS"
+              select_stmt <- paste(sql_parts[2:length(sql_parts)], collapse = " AS ")
+              
+              # Create a temporary table with the query result
+              dbExecute(con, paste0("DROP TABLE IF EXISTS ", temp_table_name))
+              dbExecute(con, paste0("CREATE TABLE ", temp_table_name, " AS ", select_stmt))
+              
+              # Replace the old table with the new data
+              dbExecute(con, paste0("DROP TABLE IF EXISTS ", view_name))
+              dbExecute(con, paste0("ALTER TABLE ", temp_table_name, " RENAME TO ", view_name))
+              
+              log_message(paste("Refreshed generic materialized view:", view_name),
+                         level = "INFO", show_console = TRUE)
+              return(TRUE)
+            }
+          }
+          
+          log_message(paste("Couldn't determine refresh strategy for materialized view:", view_name),
+                     level = "WARN", show_console = TRUE)
+          return(FALSE)
+        }
+      }, error = function(e) {
+        log_message(paste("Error refreshing", view_name, ":", conditionMessage(e)),
+                   level = "WARN", show_console = TRUE)
+        return(FALSE)
+      })
+    }
+    
+    # Start a transaction for atomic update of all materialized views
+    dbExecute(con, "BEGIN TRANSACTION")
+    
+    # Refresh each view safely
+    refresh_results <- list()
+    
+    for (view_name in existing_views) {
+      refresh_results[[view_name]] <- tryCatch({
+        log_message(paste("Refreshing materialized view:", view_name),
+                   level = "INFO", show_console = TRUE)
+        result <- refresh_view(view_name)
+        if (result) {
+          refreshed_views <- refreshed_views + 1
+          log_message(paste("Successfully refreshed materialized view:", view_name),
+                     level = "INFO", show_console = TRUE)
+        }
+        result
+      }, error = function(e) {
+        log_message(paste("Error during refresh of", view_name, ":", conditionMessage(e)),
+                   level = "ERROR", show_console = TRUE)
+        FALSE
+      })
+    }
+    
+    # Commit the transaction
+    commit_success <- tryCatch({
+      dbExecute(con, "COMMIT")
+      TRUE
+    }, error = function(e) {
+      # If commit fails, try to rollback
+      tryCatch({
+        dbExecute(con, "ROLLBACK")
+        log_message("Rolled back failed materialized view refresh transaction",
+                   level = "WARN", show_console = TRUE)
+      }, error = function(e2) {
+        log_message("Failed to rollback transaction after materialized view refresh error",
+                   level = "ERROR", show_console = TRUE)
+      })
+      
+      log_message(paste("Error committing materialized view updates:", conditionMessage(e)),
+                 level = "ERROR", show_console = TRUE)
+      FALSE
+    })
+    
+    # Calculate refresh time
+    refresh_end_time <- Sys.time()
+    refresh_time_taken <- difftime(refresh_end_time, refresh_start_time, units = "secs")
+    
+    # Log summary
+    if (commit_success) {
+      log_message(paste0("Successfully refreshed ", refreshed_views, " of ", 
+                       length(existing_views), " materialized views in ",
+                       round(as.numeric(refresh_time_taken), 2), " seconds"),
+                 level = "INFO", show_console = TRUE)
+      return(TRUE)
+    } else {
+      log_message("Materialized view refresh failed - transaction could not be committed",
+                 level = "ERROR", show_console = TRUE)
+      return(FALSE)
+    }
+  }
+  
+  # When in incremental mode and updates were made, refresh materialized views
+  if (use_incremental) {
+    # Check if any data was inserted or updated in this run
+    for (batch in 1:total_batches) {
+      batch_data <- batch_results[[batch]]
+      if (!is.null(batch_data) && nrow(batch_data) > 0) {
+        # We had some data updates, so refresh the materialized views
+        refresh_materialized_views()
+        break
+      }
+    }
+  }
   
   # Update processing metadata
   log_message("Updating processing metadata...",

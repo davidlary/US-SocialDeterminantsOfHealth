@@ -25,6 +25,20 @@ database:
   db_name: "us_county_sdoh_unified.duckdb"
   db_path: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/output/us_county_sdoh_unified.duckdb"
   overwrite_db: false
+  optimizations:
+    auto_detect_resources: true   # Automatically detect system resources
+    memory_mapped_io: true        # Use memory-mapped I/O for large datasets
+    indices:                      # Indexing strategy
+      strategy: "auto"            # Options: "minimal", "standard", "comprehensive", "advanced", "auto"
+      analyze_tables: true        # Run ANALYZE on tables for query optimization
+    materialized_views:
+      enabled: true               # Use materialized views when sufficient memory is available
+      refresh_on_update: true     # Refresh materialized views when data is updated
+      memory_threshold_gb: 4      # Minimum memory required for materialized views (GB)
+    performance:
+      compression: "auto"         # Options: "none", "light", "medium", "high", "auto"
+      threads: "auto"             # Number of threads or "auto" to detect
+      cache_size_percent: 20      # Percentage of available memory to use for cache
   
 # Data refresh options
 data_refresh:
