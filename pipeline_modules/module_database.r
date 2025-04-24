@@ -165,6 +165,22 @@ create_unified_database <- function(processed_data,
   variables_for_db <- crosswalk %>%
     select(variable_name, domain, description, type, units, min_year, max_year, extended_only)
   
+  # Check for duplicate variable names which would violate the primary key
+  duplicate_vars <- variables_for_db %>%
+    group_by(variable_name) %>%
+    filter(n() > 1) %>%
+    ungroup()
+  
+  if (nrow(duplicate_vars) > 0) {
+    log_message(paste("WARNING: Found", nrow(duplicate_vars), "duplicate variable names in crosswalk"),
+               level = "WARN", show_console = TRUE)
+    # De-duplicate
+    variables_for_db <- variables_for_db %>%
+      distinct(variable_name, .keep_all = TRUE)
+    log_message("De-duplicated variables table before insertion",
+               level = "INFO", show_console = TRUE)
+  }
+  
   # Clear existing variables first
   dbExecute(con, "DELETE FROM variables")
   
@@ -254,6 +270,39 @@ create_unified_database <- function(processed_data,
       ) %>%
       filter(!is.na(value)) # Only keep non-NA values
     
+    # Check for duplicates in the raw data
+    potential_duplicates <- long_data %>%
+      group_by(geoid, year, variable_name) %>%
+      filter(n() > 1) %>%
+      ungroup()
+    
+    if (nrow(potential_duplicates) > 0) {
+      # We found duplicates in the source data, log a warning
+      warning_msg <- paste("WARNING: Found", nrow(potential_duplicates),
+                         "duplicate key combinations in source data for batch", batch)
+      message(warning_msg)
+      
+      # Log the first few duplicates
+      duplicate_example <- potential_duplicates %>%
+        distinct(geoid, year, variable_name) %>%
+        head(3)
+      
+      for (i in 1:nrow(duplicate_example)) {
+        dup_msg <- paste("   Duplicate:", 
+                       paste0("geoid: ", duplicate_example$geoid[i], ", ",
+                             "year: ", duplicate_example$year[i], ", ",
+                             "variable_name: ", duplicate_example$variable_name[i]))
+        message(dup_msg)
+      }
+      
+      # De-duplicate the data (keep first occurrence)
+      long_data <- long_data %>%
+        distinct(geoid, year, variable_name, .keep_all = TRUE)
+      
+      message(paste("   De-duplicated data for batch", batch,
+                  "- keeping one record per unique key combination"))
+    }
+    
     # Generate timestamp
     long_data$last_updated <- Sys.time()
     
@@ -305,6 +354,22 @@ create_unified_database <- function(processed_data,
           long_data$key <- NULL
         }
       }
+    }
+    
+    # Final safety check for duplicates before returning
+    final_check <- long_data %>%
+      group_by(geoid, year, variable_name) %>%
+      filter(n() > 1) %>%
+      ungroup()
+    
+    if (nrow(final_check) > 0) {
+      warning_msg <- paste("CRITICAL: Still found", nrow(final_check),
+                         "duplicates after processing batch", batch, "- forcibly de-duplicating")
+      message(warning_msg)
+      
+      # Force de-duplication to prevent database errors
+      long_data <- long_data %>%
+        distinct(geoid, year, variable_name, .keep_all = TRUE)
     }
     
     return(long_data)
@@ -329,73 +394,80 @@ create_unified_database <- function(processed_data,
   
   # Process and insert each batch result
   for (batch in 1:total_batches) {
-    # Calculate batch columns for this batch
-    start_idx <- (batch - 1) * batch_size + 1
-    end_idx <- min(batch * batch_size, length(pivot_cols))
-    batch_cols <- pivot_cols[start_idx:end_idx]
-    
-    # Get batch result
+    # Get batch result - already processed by the process_batch function
     long_data <- batch_results[[batch]]
     log_message(paste("Inserting batch", batch, "of", total_batches, "into database"),
                level = "INFO", show_console = TRUE)
     
-    # Generate timestamp
-    long_data$last_updated <- Sys.time()
-    
-    # Set other columns to NULL for now (will be updated later if flags exist)
-    long_data$data_quality <- NA_character_
-    long_data$data_source <- NA_character_
-    long_data$data_vintage <- NA_character_
-    long_data$interpolation_method <- NA_character_
-    long_data$ci_lower <- NA_real_
-    long_data$ci_upper <- NA_real_
-    long_data$confidence_level <- NA_real_
-    
-    # Check for interpolation flags and add them
-    for (var_name in batch_cols) {
-      interp_col <- paste0(var_name, "_interpolated")
-      if (interp_col %in% names(processed_data)) {
-        var_rows <- long_data$variable_name == var_name
+    # Insert this batch into the database without redundant processing
+    # The batch_results already contain all needed processing from the process_batch function
+    tryCatch({
+      dbWriteTable(con, "sdoh_data", long_data, append = TRUE)
+      log_message(paste("Inserted", nrow(long_data), "data points for batch", batch),
+                 level = "INFO", show_console = TRUE)
+    }, error = function(e) {
+      # Check for duplicate key errors
+      if (grepl("Duplicate key.*violates primary key constraint", conditionMessage(e))) {
+        # Find duplicate entries in this batch
+        duplicates <- long_data %>%
+          group_by(geoid, year, variable_name) %>%
+          filter(n() > 1) %>%
+          ungroup()
         
-        # Join interpolation info
-        interp_data <- processed_data %>%
-          select(geoid, year, !!sym(interp_col)) %>%
-          filter(!is.na(!!sym(interp_col)))
-        
-        if (nrow(interp_data) > 0) {
-          # Create a lookup to efficiently update long_data
-          interp_lookup <- interp_data %>%
-            mutate(
-              key = paste(geoid, year, sep = "_"),
-              interp_value = !!sym(interp_col)
-            )
-          
-          # Add a key to long_data for the lookup
-          long_data <- long_data %>%
-            mutate(key = ifelse(variable_name == var_name, 
-                              paste(geoid, year, sep = "_"), NA))
-          
-          # Update interpolation method for matches
-          for (i in 1:nrow(interp_lookup)) {
-            current_key <- interp_lookup$key[i]
-            current_value <- interp_lookup$interp_value[i]
-            
-            if (current_value) {
-              # Update the interpolation method
-              long_data$interpolation_method[long_data$key == current_key] <- "linear"
-            }
-          }
-          
-          # Remove the temporary key column
-          long_data$key <- NULL
+        if (nrow(duplicates) > 0) {
+          # There are duplicates within this batch
+          log_message(paste("ERROR: Found", nrow(duplicates), "duplicate entries within batch", batch),
+                     level = "ERROR", show_console = TRUE)
+          log_message(paste("First duplicate:", 
+                           paste0("geoid: ", duplicates$geoid[1], 
+                                 ", year: ", duplicates$year[1], 
+                                 ", variable_name: ", duplicates$variable_name[1])),
+                     level = "ERROR", show_console = TRUE)
+        } else {
+          # Batch is fine, but duplicates already exist in database
+          log_message(paste("ERROR: Duplicate entry detected when inserting batch", batch),
+                     level = "ERROR", show_console = TRUE)
+          log_message(paste("Error message:", conditionMessage(e)),
+                     level = "ERROR", show_console = TRUE)
+          log_message("This indicates a duplicate key already exists in the database",
+                     level = "ERROR", show_console = TRUE)
         }
+        
+        # Add an option to continue with de-duplication
+        log_message("Attempting to remove duplicates and continue...",
+                   level = "INFO", show_console = TRUE)
+        
+        # De-duplicate the data
+        long_data_unique <- long_data %>%
+          distinct(geoid, year, variable_name, .keep_all = TRUE)
+        
+        # Calculate how many duplicates were removed
+        duplicates_removed <- nrow(long_data) - nrow(long_data_unique)
+        if (duplicates_removed > 0) {
+          log_message(paste("Removed", duplicates_removed, "duplicate entries from batch", batch),
+                     level = "INFO", show_console = TRUE)
+        }
+        
+        # Try again with de-duplicated data
+        tryCatch({
+          dbWriteTable(con, "sdoh_data", long_data_unique, append = TRUE)
+          log_message(paste("Successfully inserted", nrow(long_data_unique), 
+                          "de-duplicated data points for batch", batch),
+                     level = "INFO", show_console = TRUE)
+        }, error = function(inner_error) {
+          log_message(paste("ERROR: Failed to insert even after de-duplication:", 
+                           conditionMessage(inner_error)),
+                     level = "ERROR", show_console = TRUE)
+          stop(paste("Database insertion failed even after de-duplication:", 
+                    conditionMessage(inner_error)))
+        })
+      } else {
+        # Re-throw other errors
+        log_message(paste("ERROR during database insertion:", conditionMessage(e)),
+                   level = "ERROR", show_console = TRUE)
+        stop(paste("Database insertion error:", conditionMessage(e)))
       }
-    }
-    
-    # Insert this batch into the database
-    dbWriteTable(con, "sdoh_data", long_data, append = TRUE)
-    log_message(paste("Inserted", nrow(long_data), "data points for batch", batch),
-               level = "INFO", show_console = TRUE)
+    })
   }
   
   # Create indices for faster queries
