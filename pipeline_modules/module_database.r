@@ -1952,18 +1952,13 @@ create_unified_database <- function(processed_data,
   return(TRUE)
 }
 
-# Define the is_sourced function if not already defined
-if (!exists("is_sourced")) {
-  is_sourced <- function() {
-    !identical(environment(is_sourced), .GlobalEnv)
-  }
+# Simple direct sourcing check
+is_direct_run <- (sys.nframe() == 0)
+
+# If run directly, show error message
+if (is_direct_run) {
+  message("Database module cannot be run directly. Use the unified pipeline.")
 }
 
-# Only run if executed directly (not sourced)
-if (!is_sourced()) {
-  message("Database module cannot be run directly. Use the unified pipeline.")
-} else {
-  # Return TRUE if sourced to indicate successful loading
-  message("Successfully loaded database module")
-  TRUE  # This should be the last expression in the file
-}
+# Return TRUE for successful loading
+TRUE
