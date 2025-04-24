@@ -63,6 +63,27 @@ The domains include:
 - **Digital Access**: Internet and computer access, broadband availability
 - **Climate & Weather**: Temperature, precipitation, extreme weather events
 
+## Quick Start with Sample Data
+
+For new users who want to quickly test the pipeline without setting up API credentials or downloading large datasets:
+
+1. **Generate Sample Data**:
+   ```bash
+   Rscript R/utilities/create_sample_data.r
+   ```
+
+2. **Install Essential Packages** (automatically handles missing packages):
+   ```bash
+   Rscript R/install_missing_packages.r
+   ```
+
+3. **Run the Pipeline with Sample Data**:
+   ```bash
+   Rscript R/unified_sdoh_pipeline.r --use-sample-data
+   ```
+
+This will create a minimal working dataset that demonstrates the pipeline's functionality without requiring external data sources or API keys.
+
 ### Required Data Sources
 
 For real-world analysis, ensure these data files exist:
@@ -71,7 +92,7 @@ For real-world analysis, ensure these data files exist:
 - Census Bureau data (via API with proper credentials)
 - NHGIS/IPUMS data (via API with proper credentials)
 
-The pipeline will use actual data from these sources when available, falling back to cached data when needed.
+The pipeline will use actual data from these sources when available, falling back to cached data when needed. The pipeline now includes automatic package installation to ensure all required libraries (including visualization packages like 'viridis') are available when running the code.
 
 ## Getting Started
 
