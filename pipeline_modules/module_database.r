@@ -1948,19 +1948,11 @@ create_unified_database <- function(processed_data,
     log_message(" - Processing mode: FULL (all data reprocessed)",
                level = "INFO", show_console = TRUE)
   }
-  
+
   return(TRUE)
 }
 
-# Simple direct sourcing check
-is_direct_run <- (sys.nframe() == 0)
+# Simple module ending
+message("Database module loaded successfully")
+1  # Explicit final expression
 
-# If run directly, show error message
-if (is_direct_run) {
-  message("Database module cannot be run directly. Use the unified pipeline.")
-}
-
-# Return TRUE for successful loading
-TRUE
-# End of file marker
-1
