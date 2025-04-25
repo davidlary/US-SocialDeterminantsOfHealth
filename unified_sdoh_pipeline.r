@@ -581,51 +581,15 @@ if (!"database" %in% skip_steps) {
   log_message(paste("Saved processed data to:", processed_data_path),
              level = "INFO", log_file = log_file)
   
-  # Robust database module loading with fallback mechanism
-  tryCatch({
-  # Try to load the database module function from the file
-  log_message("Loading database module...", level = "INFO", show_console = TRUE)
-  db_code <- readLines("pipeline_modules/module_database.r")
-  
-  # Extract the create_unified_database function
-  start_line <- grep("^create_unified_database <- function\\(", db_code)
-  if (length(start_line) == 0) {
-    stop("Could not find create_unified_database function in module_database.r")
-  }
-  
-  end_line <- start_line
-  brace_count <- 0
-  
-  # Find the end of the function by counting braces
-  for (i in start_line:length(db_code)) {
-    line <- db_code[i]
-    open_braces <- sum(gregexpr("\\{", line)[[1]] > 0)
-    close_braces <- sum(gregexpr("\\}", line)[[1]] > 0)
-    brace_count <- brace_count + open_braces - close_braces
-    end_line <- i
-    if (brace_count == 0) break
-  }
-  
-  # Extract and evaluate the function
-  create_unified_database_code <- paste(db_code[start_line:end_line], collapse="\n")
-  eval(parse(text = create_unified_database_code))
-  log_message("Successfully loaded create_unified_database function from module_database.r", 
-             level = "INFO", show_console = TRUE)
-}, error = function(e) {
-  # Error fallback - use simplified database creation function
-  log_message(paste("ERROR loading database module:", conditionMessage(e)),
-             level = "ERROR", show_console = TRUE)
-  log_message("Using simplified database function as fallback", 
-             level = "WARN", show_console = TRUE)
-  
+  # Define the fallback database function first so it's always available
   create_unified_database <- function(processed_data, 
-                                     crosswalk, 
-                                     db_path = "output/us_county_sdoh_unified.duckdb",
-                                     overwrite = FALSE,
-                                     incremental = FALSE,
-                                     force_full_rebuild = FALSE,
-                                     data_sources = NULL,
-                                     processed_years = NULL) {
+                                   crosswalk, 
+                                   db_path = "output/us_county_sdoh_unified.duckdb",
+                                   overwrite = FALSE,
+                                   incremental = FALSE,
+                                   force_full_rebuild = FALSE,
+                                   data_sources = NULL,
+                                   processed_years = NULL) {
     log_message("\nSTEP 4: CREATING UNIFIED DATABASE (FALLBACK VERSION)", 
                level = "INFO", show_console = TRUE)
     
@@ -782,7 +746,73 @@ if (!"database" %in% skip_steps) {
     
     return(TRUE)
   }
-})
+  
+  # Try to load the enhanced version from the module
+  tryCatch({
+    # Try to load the database module function from the file
+    log_message("Loading database module...", level = "INFO", show_console = TRUE)
+    optimized_db_function <- NULL
+    
+    # Direct file reading to extract the function - more reliable approach
+    db_file <- "pipeline_modules/module_database.r"
+    if (file.exists(db_file)) {
+      db_content <- readLines(db_file)
+      
+      # Find the function definition
+      function_start <- grep("^create_unified_database <- function", db_content)
+      if (length(function_start) > 0) {
+        # Find the opening brace
+        opening_brace <- grep("\\{", db_content)
+        opening_brace <- opening_brace[opening_brace >= function_start][1]
+        
+        # Now find the matching closing brace
+        brace_count <- 1
+        closing_line <- opening_brace
+        
+        for (i in (opening_brace+1):length(db_content)) {
+          line <- db_content[i]
+          open_count <- length(gregexpr("\\{", line)[[1]])
+          open_count <- sum(open_count > 0)
+          
+          close_count <- length(gregexpr("\\}", line)[[1]])
+          close_count <- sum(close_count > 0)
+          
+          brace_count <- brace_count + open_count - close_count
+          
+          if (brace_count == 0) {
+            closing_line <- i
+            break
+          }
+        }
+        
+        if (brace_count == 0) {
+          # We found a complete function definition
+          function_def <- db_content[function_start:closing_line]
+          function_code <- paste(function_def, collapse="\n")
+          
+          # Evaluate the function in the global environment
+          eval(parse(text=function_code), envir=.GlobalEnv)
+          log_message("Successfully loaded optimized create_unified_database function", 
+                     level = "INFO", show_console = TRUE)
+        } else {
+          # Failed to find complete function
+          log_message("Could not find complete function definition in module file", 
+                     level = "WARN", show_console = TRUE)
+        }
+      } else {
+        log_message("Could not find create_unified_database function in module file", 
+                   level = "WARN", show_console = TRUE)
+      }
+    } else {
+      log_message("Database module file not found", level = "WARN", show_console = TRUE)
+    }
+  }, error = function(e) {
+    log_message(paste("ERROR loading database module:", conditionMessage(e)),
+               level = "ERROR", show_console = TRUE)
+    log_message("Using simplified database function as fallback", 
+               level = "WARN", show_console = TRUE)
+  })
+}
 } else {
   log_message("\nSKIPPING STEP 4: CREATING UNIFIED DATABASE (restart mode)",
              level = "INFO", log_file = log_file, show_console = TRUE)
