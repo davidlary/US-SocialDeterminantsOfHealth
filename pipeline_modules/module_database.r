@@ -1962,3 +1962,5 @@ if (is_direct_run) {
 
 # Return TRUE for successful loading
 TRUE
+# End of file marker
+1
