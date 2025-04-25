@@ -11,6 +11,15 @@
 #'
 #' Configuration is loaded from a YAML file (config.yaml) which supports
 #' separating code from data storage and allows using network drives.
+#'
+#' The pipeline also supports restarting from specific steps using the
+#' --restart-from=STEP argument, where STEP can be one of:
+#' - crosswalk: Restart from the variable crosswalk building step
+#' - fetch: Restart from the data fetching step
+#' - process: Restart from the data processing step
+#' - database: Restart from the database creation step
+#' - maps: Restart from the map generation step
+#' - documentation: Restart from the documentation generation step
 
 # Function to check and install required packages before pipeline starts
 install_required_packages <- function(packages) {
@@ -110,20 +119,48 @@ log_message(paste("Starting pipeline. Log will be saved to:", log_file),
 source("pipeline_modules/module_crosswalk.r")
 
 # Build and validate the crosswalk
-log_message("STEP 1: BUILDING VARIABLE CROSSWALK", 
-           level = "INFO", log_file = log_file)
-           
-crosswalk <- build_sdoh_crosswalk(
-  output_dir = config$directories$output_dir,
-  force_update = config$data_refresh$refresh_cache,
-  verbose = TRUE
-)
+if (!"crosswalk" %in% skip_steps) {
+  log_message("STEP 1: BUILDING VARIABLE CROSSWALK", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+             
+  crosswalk <- build_sdoh_crosswalk(
+    output_dir = config$directories$output_dir,
+    force_update = config$data_refresh$refresh_cache,
+    verbose = TRUE
+  )
+} else {
+  log_message("SKIPPING STEP 1: BUILDING VARIABLE CROSSWALK (using existing crosswalk)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+             
+  # Load existing crosswalk
+  crosswalk_path <- file.path(config$directories$output_dir, "variable_crosswalk_consolidated.csv")
+  if (file.exists(crosswalk_path)) {
+    crosswalk <- read.csv(crosswalk_path, stringsAsFactors = FALSE)
+    log_message(paste("Loaded existing crosswalk with", nrow(crosswalk), "variables"),
+               level = "INFO", log_file = log_file)
+  } else {
+    log_message("ERROR: Cannot find existing crosswalk. Will build it from scratch.",
+               level = "ERROR", log_file = log_file, show_console = TRUE)
+    crosswalk <- build_sdoh_crosswalk(
+      output_dir = config$directories$output_dir,
+      force_update = config$data_refresh$refresh_cache,
+      verbose = TRUE
+    )
+  }
+}
 
 # -------------------------------------------------------------------------
 # STEP 2: FETCH DATA FROM MULTIPLE SOURCES
 # -------------------------------------------------------------------------
-log_message("STEP 2: FETCHING DATA FROM MULTIPLE SOURCES", 
-           level = "INFO", log_file = log_file)
+if (!"fetch" %in% skip_steps) {
+  log_message("STEP 2: FETCHING DATA FROM MULTIPLE SOURCES", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+} else {
+  log_message("SKIPPING STEP 2: FETCHING DATA FROM MULTIPLE SOURCES (restart mode)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+  log_message("Will load cached data for processing step", 
+             level = "INFO", log_file = log_file)
+}
 
 # Import the data fetching module
 source("pipeline_modules/module_data_fetching.r")
@@ -451,8 +488,26 @@ log_message("All 15 domain data sources loaded successfully",
 # -------------------------------------------------------------------------
 # STEP 3: PROCESS AND COMBINE DATA
 # -------------------------------------------------------------------------
-log_message("\nSTEP 3: PROCESSING AND COMBINING DATA", 
-           level = "INFO", log_file = log_file)
+if (!"process" %in% skip_steps) {
+  log_message("\nSTEP 3: PROCESSING AND COMBINING DATA", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+} else {
+  log_message("\nSKIPPING STEP 3: PROCESSING AND COMBINING DATA (restart mode)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+  log_message("Will load processed data from RDS file", 
+             level = "INFO", log_file = log_file)
+  
+  # Try to load processed data from cache
+  processed_data_path <- file.path(config$directories$cache_dir, "processed_sdoh_data.rds")
+  if (file.exists(processed_data_path)) {
+    processed_data <- readRDS(processed_data_path)
+    log_message(paste("Loaded processed data with", nrow(processed_data), "rows and", ncol(processed_data), "columns"),
+               level = "INFO", log_file = log_file)
+  } else {
+    log_message("ERROR: Cannot find cached processed data. Will process data from scratch.", 
+               level = "ERROR", log_file = log_file, show_console = TRUE)
+  }
+}
 
 # Main processing
 log_message("Processing data from multiple sources...",
@@ -486,8 +541,19 @@ processed_data <- get_processed_data(
 # -------------------------------------------------------------------------
 # STEP 4: CREATE UNIFIED DATABASE
 # -------------------------------------------------------------------------
-# Robust database module loading with fallback mechanism
-tryCatch({
+# Only load and run database module if not skipping this step
+if (!"database" %in% skip_steps) {
+  log_message("\nSTEP 4: CREATING UNIFIED DATABASE", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+             
+  # Save processed data for future restarts
+  processed_data_path <- file.path(config$directories$cache_dir, "processed_sdoh_data.rds")
+  saveRDS(processed_data, processed_data_path)
+  log_message(paste("Saved processed data to:", processed_data_path),
+             level = "INFO", log_file = log_file)
+  
+  # Robust database module loading with fallback mechanism
+  tryCatch({
   # Try to load the database module function from the file
   log_message("Loading database module...", level = "INFO", show_console = TRUE)
   db_code <- readLines("pipeline_modules/module_database.r")
@@ -688,6 +754,10 @@ tryCatch({
     return(TRUE)
   }
 })
+} else {
+  log_message("\nSKIPPING STEP 4: CREATING UNIFIED DATABASE (restart mode)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+}
 
 # Determine if we should use incremental processing
 use_incremental <- FALSE
@@ -724,6 +794,33 @@ if (any(grepl("^--force-full-rebuild=", args))) {
              level = "INFO", log_file = log_file)
 }
 
+# Check for restart from a specific step
+restart_from <- NULL
+skip_steps <- c()
+if (any(grepl("^--restart-from=", args))) {
+  restart_arg <- grep("^--restart-from=", args, value = TRUE)[1]
+  restart_from <- sub("^--restart-from=", "", restart_arg)
+  valid_steps <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
+  
+  if (restart_from %in% valid_steps) {
+    log_message(paste("Restarting pipeline from step:", restart_from),
+               level = "INFO", show_console = TRUE)
+    
+    # Determine which steps to skip
+    step_order <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
+    skip_steps <- step_order[1:which(step_order == restart_from) - 1]
+    
+    if (length(skip_steps) > 0) {
+      log_message(paste("Skipping steps:", paste(skip_steps, collapse = ", ")),
+                 level = "INFO", show_console = TRUE)
+    }
+  } else {
+    log_message(paste("Invalid restart step:", restart_from, "- must be one of:", paste(valid_steps, collapse = ", ")),
+               level = "WARN", show_console = TRUE)
+    restart_from <- NULL
+  }
+}
+
 # Create the unified database
 create_unified_database(
   processed_data = processed_data,
@@ -739,7 +836,7 @@ create_unified_database(
 # -------------------------------------------------------------------------
 # STEP 5: GENERATE MAPS
 # -------------------------------------------------------------------------
-if (config$maps$generate_maps) {
+if (config$maps$generate_maps && !"maps" %in% skip_steps) {
   source("pipeline_modules/module_maps.r")
   
   # Generate maps
@@ -750,12 +847,18 @@ if (config$maps$generate_maps) {
     parallel = config$processing$parallel,
     cores = config$processing$cores
   )
+} else if (!"maps" %in% skip_steps && !config$maps$generate_maps) {
+  log_message("Maps generation disabled in config.yaml",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+} else {
+  log_message("SKIPPING STEP 5: GENERATE MAPS (restart mode)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
 }
 
 # -------------------------------------------------------------------------
 # STEP 6: GENERATE DOCUMENTATION
 # -------------------------------------------------------------------------
-if (config$documentation$update_documentation) {
+if (config$documentation$update_documentation && !"documentation" %in% skip_steps) {
   source("pipeline_modules/module_documentation.r")
   
   # Generate documentation
@@ -763,6 +866,12 @@ if (config$documentation$update_documentation) {
     crosswalk = crosswalk,
     output_dir = "docs"
   )
+} else if (!"documentation" %in% skip_steps && !config$documentation$update_documentation) {
+  log_message("Documentation update disabled in config.yaml",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+} else {
+  log_message("SKIPPING STEP 6: GENERATE DOCUMENTATION (restart mode)",
+             level = "INFO", log_file = log_file, show_console = TRUE)
 }
 
 # Update the last update time
