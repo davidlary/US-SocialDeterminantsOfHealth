@@ -113,6 +113,35 @@ if (config$update_info$days_since_update < config$data_refresh$max_data_age_days
 log_message(paste("Starting pipeline. Log will be saved to:", log_file),
            level = "INFO", log_file = log_file)
 
+# Initialize variables for restart capability
+skip_steps <- c()
+restart_from <- NULL
+
+# Parse command line arguments for restart capability
+if (any(grepl("^--restart-from=", args))) {
+  restart_arg <- grep("^--restart-from=", args, value = TRUE)[1]
+  restart_from <- sub("^--restart-from=", "", restart_arg)
+  valid_steps <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
+  
+  if (restart_from %in% valid_steps) {
+    log_message(paste("Restarting pipeline from step:", restart_from),
+               level = "INFO", show_console = TRUE)
+    
+    # Determine which steps to skip
+    step_order <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
+    skip_steps <- step_order[1:which(step_order == restart_from) - 1]
+    
+    if (length(skip_steps) > 0) {
+      log_message(paste("Skipping steps:", paste(skip_steps, collapse = ", ")),
+                 level = "INFO", show_console = TRUE)
+    }
+  } else {
+    log_message(paste("Invalid restart step:", restart_from, "- must be one of:", paste(valid_steps, collapse = ", ")),
+               level = "WARN", show_console = TRUE)
+    restart_from <- NULL
+  }
+}
+
 # -------------------------------------------------------------------------
 # STEP 1: BUILD VARIABLE CROSSWALK
 # -------------------------------------------------------------------------
@@ -794,32 +823,7 @@ if (any(grepl("^--force-full-rebuild=", args))) {
              level = "INFO", log_file = log_file)
 }
 
-# Check for restart from a specific step
-restart_from <- NULL
-skip_steps <- c()
-if (any(grepl("^--restart-from=", args))) {
-  restart_arg <- grep("^--restart-from=", args, value = TRUE)[1]
-  restart_from <- sub("^--restart-from=", "", restart_arg)
-  valid_steps <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
-  
-  if (restart_from %in% valid_steps) {
-    log_message(paste("Restarting pipeline from step:", restart_from),
-               level = "INFO", show_console = TRUE)
-    
-    # Determine which steps to skip
-    step_order <- c("crosswalk", "fetch", "process", "database", "maps", "documentation")
-    skip_steps <- step_order[1:which(step_order == restart_from) - 1]
-    
-    if (length(skip_steps) > 0) {
-      log_message(paste("Skipping steps:", paste(skip_steps, collapse = ", ")),
-                 level = "INFO", show_console = TRUE)
-    }
-  } else {
-    log_message(paste("Invalid restart step:", restart_from, "- must be one of:", paste(valid_steps, collapse = ", ")),
-               level = "WARN", show_console = TRUE)
-    restart_from <- NULL
-  }
-}
+# The restart variables are now initialized earlier in the script
 
 # Create the unified database
 create_unified_database(
