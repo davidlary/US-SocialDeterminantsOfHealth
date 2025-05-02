@@ -6,6 +6,8 @@ This document explains the database optimizations implemented in the Social Dete
 
 The SDOH pipeline uses DuckDB for storing and querying county-level health and social data. Several optimizations have been implemented to ensure efficient operation across various system configurations:
 
+> **Note:** For information on the robust upsert pattern used for handling primary key constraints and data updates, see the [Database Upsert Implementation Guide](DATABASE_UPSERT_IMPLEMENTATION.md).
+
 1. **Resource-Aware Configuration** - Automatically detects available system resources (memory, CPU, disk) and configures database settings accordingly
 2. **Sophisticated Indexing** - Creates optimized indices based on common query patterns
 3. **Materialized Views** - Pre-computes common query results for faster access

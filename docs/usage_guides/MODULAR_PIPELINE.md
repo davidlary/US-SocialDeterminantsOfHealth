@@ -126,12 +126,17 @@ To create a new module:
    - Check that DuckDB is installed
    - Verify that no other process has locked the database file
 
-2. **Missing Data**
+2. **Primary Key Constraint Errors**
+   - These should no longer occur with the improved upsert operation
+   - If they still happen, check for duplicate records in your input data
+   - For details, see the [Database Upsert Implementation Guide](../DATABASE_UPSERT_IMPLEMENTATION.md)
+
+3. **Missing Data**
    - Check that API credentials are properly set
    - Verify that cache directories exist
    - Ensure the necessary data files are available
 
-3. **Map Generation Failures**
+4. **Map Generation Failures**
    - Verify that shapefile data is available
    - Check for column name mismatches between database and shapefile
    - Ensure required R packages (sf, ggplot2) are installed

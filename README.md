@@ -241,6 +241,8 @@ The pipeline includes several key performance optimizations:
    - Memory-mapped I/O for large datasets
    - Resource-aware configuration that adapts to available hardware
    - Advanced caching strategies for query acceleration
+   - Atomic upsert operations for robust handling of primary key constraints
+   - Efficient handling of data updates through INSERT OR REPLACE
 
 4. **IHME Data Processing**:
    - Optimized for 46+ million rows of life expectancy data
@@ -483,11 +485,12 @@ Based on our analysis of the pipeline, we recommend the following improvements:
 7. **Distributed Computation**: Add support for distributed processing across multiple nodes
 
 ### Robustness Improvements
-1. **More Comprehensive Unit Testing**: Expand test coverage for all modules
-2. **Validation Framework**: Add formal data validation framework with schema checks
-3. **API Rate Limiting**: Implement more sophisticated API rate limiting and retry logic
-4. **Dependency Injection**: Refactor to use formal dependency injection for easier testing
-5. **Circuit Breakers**: Add circuit breakers for external dependencies to prevent cascading failures
+1. ✅ **Atomic Database Operations**: Implemented robust upsert pattern with INSERT OR REPLACE
+2. **More Comprehensive Unit Testing**: Expand test coverage for all modules
+3. **Validation Framework**: Add formal data validation framework with schema checks
+4. **API Rate Limiting**: Implement more sophisticated API rate limiting and retry logic
+5. **Dependency Injection**: Refactor to use formal dependency injection for easier testing
+6. **Circuit Breakers**: Add circuit breakers for external dependencies to prevent cascading failures
 
 ### Feature Enhancements
 1. **API Layer**: Add a REST API to expose the data

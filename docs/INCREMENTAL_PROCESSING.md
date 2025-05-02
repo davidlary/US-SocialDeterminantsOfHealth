@@ -118,6 +118,8 @@ The incremental processing system is implemented primarily in the database modul
    INSERT OR REPLACE INTO sdoh_data 
    SELECT * FROM temp_batch_data
    ```
+   
+   For more details on the upsert implementation, see the [Database Upsert Implementation Guide](DATABASE_UPSERT_IMPLEMENTATION.md).
 
 3. **Metadata Updates**:
    - After processing, the metadata table is updated with information about the processed data
