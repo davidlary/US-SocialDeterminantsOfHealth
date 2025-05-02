@@ -581,238 +581,8 @@ if (!"database" %in% skip_steps) {
   log_message(paste("Saved processed data to:", processed_data_path),
              level = "INFO", log_file = log_file)
   
-  # Define the fallback database function first so it's always available
-  create_unified_database <- function(processed_data, 
-                                   crosswalk, 
-                                   db_path = "output/us_county_sdoh_unified.duckdb",
-                                   overwrite = FALSE,
-                                   incremental = FALSE,
-                                   force_full_rebuild = FALSE,
-                                   data_sources = NULL,
-                                   processed_years = NULL) {
-    log_message("\nSTEP 4: CREATING UNIFIED DATABASE (FALLBACK VERSION)", 
-               level = "INFO", show_console = TRUE)
-    
-    # Basic database functionality
-    require(dplyr)
-    require(DBI)
-    require(duckdb)
-    require(tidyr)
-    
-    # Create directories if needed
-    db_dir <- dirname(db_path)
-    if (!dir.exists(db_dir)) {
-      dir.create(db_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    
-    # Ensure the database directory is available
-    unified_db_path <- db_path
-    log_message(paste("Database path:", unified_db_path),
-               level = "INFO", show_console = TRUE)
-    
-    # Determine whether to use incremental mode
-    use_incremental <- incremental && file.exists(unified_db_path) && !force_full_rebuild && !overwrite
-    
-    if (use_incremental) {
-      log_message("Using INCREMENTAL processing mode - only updating new or changed data",
-                 level = "INFO", show_console = TRUE)
-    } else {
-      log_message("Using FULL processing mode",
-                 level = "INFO", show_console = TRUE)
-    }
-    
-    # Remove existing database if overwrite is TRUE
-    if (file.exists(db_path) && overwrite) {
-      file.remove(db_path)
-      log_message(paste("Removed existing database:", db_path),
-                 level = "INFO", show_console = TRUE)
-    }
-    
-    # Connect to the database
-    con <- dbConnect(duckdb::duckdb(), dbdir = unified_db_path)
-    
-    # Create basic tables
-    log_message("Creating counties table...", level = "INFO", show_console = TRUE)
-    dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS counties (
-        geoid VARCHAR PRIMARY KEY,
-        name VARCHAR,
-        state_fips VARCHAR,
-        state_name VARCHAR
-      )
-    ")
-    
-    log_message("Creating variables table...", level = "INFO", show_console = TRUE)
-    dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS variables (
-        variable_name VARCHAR PRIMARY KEY,
-        domain VARCHAR,
-        description VARCHAR,
-        type VARCHAR,
-        units VARCHAR,
-        min_year INTEGER,
-        max_year INTEGER,
-        extended_only BOOLEAN
-      )
-    ")
-    
-    log_message("Creating main SDOH data table...", level = "INFO", show_console = TRUE)
-    dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS sdoh_data (
-        geoid VARCHAR,
-        year INTEGER,
-        variable_name VARCHAR,
-        value DOUBLE,
-        data_quality VARCHAR,
-        data_source VARCHAR,
-        PRIMARY KEY (geoid, year, variable_name)
-      )
-    ")
-    
-    # Extract unique counties from processed data
-    unique_counties <- processed_data %>%
-      select(geoid) %>%
-      distinct()
-    
-    # Add county name and state info
-    unique_counties$name <- paste("County", unique_counties$geoid)
-    unique_counties$state_fips <- substr(unique_counties$geoid, 1, 2)
-    
-    # Simple state lookup
-    state_lookup <- data.frame(
-      state_fips = sprintf("%02d", 1:56),
-      state_name = c(state.name, "District of Columbia", 
-                    "Puerto Rico", "Virgin Islands", 
-                    "Guam", "American Samoa", "Northern Mariana Islands"),
-      stringsAsFactors = FALSE
-    )
-    
-    # Join to get state names
-    unique_counties <- unique_counties %>%
-      left_join(state_lookup, by = "state_fips")
-    
-    # Insert counties
-    dbWriteTable(con, "counties", unique_counties, append = TRUE)
-    log_message(paste("Added", nrow(unique_counties), "counties to database"),
-               level = "INFO", show_console = TRUE)
-    
-    # Prepare variables for insertion
-    variables_for_db <- crosswalk %>%
-      select(variable_name, domain, description, type, units, min_year, max_year, extended_only)
-    
-    # De-duplicate variables
-    variables_for_db <- variables_for_db %>%
-      distinct(variable_name, .keep_all = TRUE)
-    
-    # Insert variables
-    dbWriteTable(con, "variables", variables_for_db, append = TRUE)
-    log_message(paste("Added", nrow(variables_for_db), "variables to database"),
-               level = "INFO", show_console = TRUE)
-    
-    # Create basic indices
-    log_message("Creating basic database indices...", level = "INFO", show_console = TRUE)
-    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_geoid ON sdoh_data(geoid)")
-    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_year ON sdoh_data(year)")
-    dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_variable ON sdoh_data(variable_name)")
-    
-    # Create a simple view
-    log_message("Creating a basic view for data access...", level = "INFO", show_console = TRUE)
-    dbExecute(con, "
-      CREATE OR REPLACE VIEW latest_data AS
-      SELECT 
-        c.geoid,
-        c.name,
-        c.state_fips,
-        c.state_name,
-        d.year,
-        d.variable_name,
-        d.value,
-        d.data_quality,
-        d.data_source
-      FROM counties c
-      JOIN sdoh_data d ON c.geoid = d.geoid
-      WHERE (d.geoid, d.variable_name, d.year) IN (
-        SELECT geoid, variable_name, MAX(year) 
-        FROM sdoh_data 
-        GROUP BY geoid, variable_name
-      )
-    ")
-    
-    # Disconnect from the database
-    dbDisconnect(con)
-    
-    log_message("Database created successfully", 
-               level = "INFO", show_console = TRUE)
-    
-    return(TRUE)
-  }
-  
-  # Try to load the enhanced version from the module
-  tryCatch({
-    # Try to load the database module function from the file
-    log_message("Loading database module...", level = "INFO", show_console = TRUE)
-    optimized_db_function <- NULL
-    
-    # Direct file reading to extract the function - more reliable approach
-    db_file <- "pipeline_modules/module_database.r"
-    if (file.exists(db_file)) {
-      db_content <- readLines(db_file)
-      
-      # Find the function definition
-      function_start <- grep("^create_unified_database <- function", db_content)
-      if (length(function_start) > 0) {
-        # Find the opening brace
-        opening_brace <- grep("\\{", db_content)
-        opening_brace <- opening_brace[opening_brace >= function_start][1]
-        
-        # Now find the matching closing brace
-        brace_count <- 1
-        closing_line <- opening_brace
-        
-        for (i in (opening_brace+1):length(db_content)) {
-          line <- db_content[i]
-          open_count <- length(gregexpr("\\{", line)[[1]])
-          open_count <- sum(open_count > 0)
-          
-          close_count <- length(gregexpr("\\}", line)[[1]])
-          close_count <- sum(close_count > 0)
-          
-          brace_count <- brace_count + open_count - close_count
-          
-          if (brace_count == 0) {
-            closing_line <- i
-            break
-          }
-        }
-        
-        if (brace_count == 0) {
-          # We found a complete function definition
-          function_def <- db_content[function_start:closing_line]
-          function_code <- paste(function_def, collapse="\n")
-          
-          # Evaluate the function in the global environment
-          eval(parse(text=function_code), envir=.GlobalEnv)
-          log_message("Successfully loaded optimized create_unified_database function", 
-                     level = "INFO", show_console = TRUE)
-        } else {
-          # Failed to find complete function
-          log_message("Could not find complete function definition in module file", 
-                     level = "WARN", show_console = TRUE)
-        }
-      } else {
-        log_message("Could not find create_unified_database function in module file", 
-                   level = "WARN", show_console = TRUE)
-      }
-    } else {
-      log_message("Database module file not found", level = "WARN", show_console = TRUE)
-    }
-  }, error = function(e) {
-    log_message(paste("ERROR loading database module:", conditionMessage(e)),
-               level = "ERROR", show_console = TRUE)
-    log_message("Using simplified database function as fallback", 
-               level = "WARN", show_console = TRUE)
-  })
-}
+  # Load the database module directly
+  source("pipeline_modules/module_database.r")
 } else {
   log_message("\nSKIPPING STEP 4: CREATING UNIFIED DATABASE (restart mode)",
              level = "INFO", log_file = log_file, show_console = TRUE)
@@ -853,10 +623,8 @@ if (any(grepl("^--force-full-rebuild=", args))) {
              level = "INFO", log_file = log_file)
 }
 
-# The restart variables are now initialized earlier in the script
-
 # Create the unified database
-create_unified_database(
+db_result <- create_unified_database(
   processed_data = processed_data,
   crosswalk = crosswalk,
   db_path = config$database$full_db_path,
@@ -871,16 +639,34 @@ create_unified_database(
 # STEP 5: GENERATE MAPS
 # -------------------------------------------------------------------------
 if (config$maps$generate_maps && !"maps" %in% skip_steps) {
-  source("pipeline_modules/module_maps.r")
+  log_message("\nSTEP 5: GENERATE MAPS", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+            
+  # Generate maps for all variables and years
+  map_result <- tryCatch({
+    # Source the map generation script
+    source("generate_conus_maps.r")
+    
+    generate_conus_maps(
+      output_dir = file.path(config$directories$output_dir, "maps"),
+      db_path = config$database$full_db_path,
+      conus_only = config$maps$conus_only,
+      parallel = config$processing$parallel
+    )
+    TRUE
+  }, error = function(e) {
+    log_message(paste("ERROR: Map generation failed:", conditionMessage(e)), 
+                level = "ERROR", log_file = log_file, show_console = TRUE)
+    FALSE
+  })
   
-  # Generate maps
-  generate_sdoh_maps(
-    db_path = config$database$full_db_path,
-    output_dir = config$directories$full_maps_dir,
-    conus_only = config$maps$conus_only,
-    parallel = config$processing$parallel,
-    cores = config$processing$cores
-  )
+  if (map_result) {
+    log_message("Maps successfully generated", 
+               level = "INFO", log_file = log_file, show_console = TRUE)
+  } else {
+    log_message("Map generation encountered errors", 
+               level = "WARN", log_file = log_file, show_console = TRUE)
+  }
 } else if (!"maps" %in% skip_steps && !config$maps$generate_maps) {
   log_message("Maps generation disabled in config.yaml",
              level = "INFO", log_file = log_file, show_console = TRUE)
@@ -893,6 +679,9 @@ if (config$maps$generate_maps && !"maps" %in% skip_steps) {
 # STEP 6: GENERATE DOCUMENTATION
 # -------------------------------------------------------------------------
 if (config$documentation$update_documentation && !"documentation" %in% skip_steps) {
+  log_message("\nSTEP 6: GENERATE DOCUMENTATION", 
+             level = "INFO", log_file = log_file, show_console = TRUE)
+             
   source("pipeline_modules/module_documentation.r")
   
   # Generate documentation
@@ -919,35 +708,6 @@ log_message("\n=================================================",
            level = "INFO", log_file = log_file)
 log_message("UNIFIED SDOH PIPELINE COMPLETED", 
            level = "INFO", log_file = log_file)
-
-# ---- Step: Generate CONUS Maps ----
-log_message("STEP: GENERATING CONUS MAPS FOR ALL VARIABLES", 
-            level = "INFO", show_console = TRUE)
-
-# Source the map generation script
-source(file.path(root_dir, "generate_conus_maps.r"))
-
-# Generate maps for all variables and years
-map_result <- tryCatch({
-  generate_conus_maps(
-    output_dir = file.path(output_dir, "maps"),
-    db_path = file.path(output_dir, "us_county_sdoh_data.duckdb"),
-    conus_only = TRUE,
-    parallel = FALSE
-  )
-  TRUE
-}, error = function(e) {
-  log_message(paste("ERROR: Map generation failed:", conditionMessage(e)), 
-              level = "ERROR", show_console = TRUE)
-  FALSE
-})
-
-if (map_result) {
-  log_message("Maps successfully generated", level = "INFO", show_console = TRUE)
-} else {
-  log_message("Map generation encountered errors", level = "WARN", show_console = TRUE)
-}
-
 log_message(paste("Execution time:", round(elapsed, 2), "minutes"), 
            level = "INFO", log_file = log_file)
 log_message(paste("Total variables:", nrow(crosswalk)), 
@@ -958,4 +718,3 @@ log_message(paste("Maps directory:", config$directories$full_maps_dir),
            level = "INFO", log_file = log_file)
 log_message("=================================================\n", 
            level = "INFO", log_file = log_file)
-
