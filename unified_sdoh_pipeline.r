@@ -68,7 +68,7 @@ timestamp <- format(start_time, "%Y%m%d_%H%M%S")
 
 # Parse command line arguments
 args <- commandArgs(trailingOnly = TRUE)
-config_path <- if (length(args) > 0) args[1] else "config.yaml"
+config_path <- if (length(args) > 0 && !grepl("^--", args[1])) args[1] else "config.yaml"
 
 # Initialize the pipeline with YAML configuration
 log_message("Initializing SDOH pipeline...")
@@ -107,6 +107,28 @@ if (config$update_info$days_since_update < config$data_refresh$max_data_age_days
   log_message("Data is outdated or refresh was forced. Will perform a full data refresh.",
              level = "INFO", log_file = log_file)
   config$data_refresh$refresh_cache <- TRUE
+}
+
+# Look for command line flags to override settings
+for (arg in args) {
+  if (arg == "--force-update") {
+    log_message("Force update flag detected - refreshing all data", 
+               level = "INFO", log_file = log_file, show_console = TRUE)
+    config$data_refresh$refresh_cache <- TRUE
+    config$database$overwrite_db <- TRUE
+  } else if (arg == "--overwrite-db") {
+    log_message("Overwrite database flag detected - database will be recreated", 
+               level = "INFO", log_file = log_file, show_console = TRUE)
+    config$database$overwrite_db <- TRUE
+  } else if (arg == "--force-full-rebuild") {
+    log_message("Force full rebuild flag detected - all data will be reprocessed", 
+               level = "INFO", log_file = log_file, show_console = TRUE)
+    config$processing$force_full_rebuild <- TRUE
+  } else if (arg == "--process-all-variables") {
+    log_message("Process all variables flag detected - ensuring all 255 variables are processed", 
+               level = "INFO", log_file = log_file, show_console = TRUE)
+    config$processing$process_all_variables <- TRUE
+  }
 }
 
 # Log pipeline start
@@ -177,6 +199,13 @@ if (!"crosswalk" %in% skip_steps) {
     )
   }
 }
+
+# Make sure there are no duplicates in the crosswalk
+crosswalk <- crosswalk %>%
+  distinct(variable_name, .keep_all = TRUE)
+
+log_message(paste("Using crosswalk with", nrow(crosswalk), "distinct variables"),
+           level = "INFO", log_file = log_file, show_console = TRUE)
 
 # -------------------------------------------------------------------------
 # STEP 2: FETCH DATA FROM MULTIPLE SOURCES
@@ -469,7 +498,7 @@ transportation_data <- load_domain_cache("transportation", "transportation_data.
 # 11. Traffic Safety
 traffic_safety_data <- NULL
 if (exists("get_traffic_safety_data")) {
-  log_message("Processing traffic safety data...",
+  log_message("Processing traffic safety data with enhanced module...",
              level = "INFO", log_file = log_file)
   
   # Check if get_traffic_safety_data accepts parallel parameters
@@ -482,16 +511,50 @@ if (exists("get_traffic_safety_data")) {
     # Call with parallel parameters
     traffic_safety_data <- get_traffic_safety_data(
       years = config$years$min_year:config$years$max_year,
+      refresh = config$data_refresh$refresh_cache,
       parallel = config$processing$parallel,
       parallel_config = parallel_config
     )
+    
+    # Save traffic safety data to cache for future use
+    cache_file <- file.path(config$directories$cache_dir, "traffic_safety_data.rds")
+    saveRDS(traffic_safety_data, cache_file)
+    log_message(paste("Saved traffic safety data to cache:", cache_file),
+               level = "INFO", log_file = log_file)
   } else {
     # Standard call without parallel parameters
     log_message("Traffic safety module using standard processing",
                level = "INFO", log_file = log_file)
-    traffic_safety_data <- get_traffic_safety_data(years = config$years$min_year:config$years$max_year)
+    traffic_safety_data <- get_traffic_safety_data(
+      years = config$years$min_year:config$years$max_year,
+      refresh = config$data_refresh$refresh_cache
+    )
+  }
+  
+  # Log information about the traffic safety data
+  log_message(paste("Retrieved traffic safety data with", nrow(traffic_safety_data), "rows,", 
+                   length(unique(traffic_safety_data$geoid)), "counties, and",
+                   length(unique(traffic_safety_data$year)), "years"),
+             level = "INFO", log_file = log_file)
+             
+  # Verify all required traffic safety variables are present
+  if (exists("get_traffic_safety_variable_names")) {
+    required_vars <- get_traffic_safety_variable_names()
+    missing_vars <- setdiff(required_vars, names(traffic_safety_data))
+    
+    if (length(missing_vars) > 0) {
+      log_message(paste("WARNING: Missing", length(missing_vars), 
+                       "required traffic safety variables:", 
+                       paste(missing_vars, collapse=", ")),
+                 level = "WARN", log_file = log_file)
+    } else {
+      log_message("All required traffic safety variables are present in the data",
+                 level = "INFO", log_file = log_file)
+    }
   }
 } else {
+  log_message("Traffic safety module not found, trying to load from cache...",
+             level = "INFO", log_file = log_file)
   traffic_safety_data <- load_domain_cache("traffic safety", "traffic_safety_data.rds", log_file)
 }
 
@@ -626,7 +689,7 @@ if (any(grepl("^--force-full-rebuild=", args))) {
 # Create the unified database
 db_result <- create_unified_database(
   processed_data = processed_data,
-  crosswalk = crosswalk,
+  crosswalk = crosswalk,  # Pass the full crosswalk to ensure all 255 variables are included
   db_path = config$database$full_db_path,
   overwrite = config$database$overwrite_db,
   incremental = use_incremental,
@@ -634,6 +697,29 @@ db_result <- create_unified_database(
   data_sources = c("census", "ihme", "traffic_safety", "epa"),
   processed_years = config$years$min_year:config$years$max_year
 )
+
+# Verify that database has all variables
+if (exists("verify_all_variables")) {
+  log_message("Verifying that database contains all variables from crosswalk...",
+             level = "INFO", log_file = log_file, show_console = TRUE)
+             
+  # Crosswalk path for verification
+  crosswalk_path <- file.path(config$directories$output_dir, "variable_crosswalk_consolidated.csv")
+  
+  # Verify all variables
+  verify_result <- verify_all_variables(
+    db_path = config$database$full_db_path,
+    crosswalk_path = crosswalk_path
+  )
+  
+  if (verify_result) {
+    log_message("Database verification successful: All variables from crosswalk are present",
+               level = "INFO", log_file = log_file, show_console = TRUE)
+  } else {
+    log_message("Database verification failed: Some variables are missing from the database",
+               level = "WARN", log_file = log_file, show_console = TRUE)
+  }
+}
 
 # -------------------------------------------------------------------------
 # STEP 5: GENERATE MAPS
@@ -645,11 +731,73 @@ if (config$maps$generate_maps && !"maps" %in% skip_steps) {
   # Generate maps for all variables and years
   map_result <- tryCatch({
     # Source the map generation script
+    log_message("Loading map generation module...",
+               level = "INFO", log_file = log_file, show_console = TRUE)
+    
     source("generate_conus_maps.r")
+    
+    # We need to ensure the shapefiles directory exists
+    shapefiles_dir <- file.path(config$directories$data_dir, "shapefiles")
+    if (!dir.exists(shapefiles_dir)) {
+      log_message(paste("Creating shapefiles directory:", shapefiles_dir),
+                level = "INFO", log_file = log_file, show_console = TRUE)
+      dir.create(shapefiles_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    # Check for existing county shapefile
+    shapefile_path <- NULL
+    potential_paths <- c(
+      file.path(shapefiles_dir, "counties_2020.rds"),
+      file.path(shapefiles_dir, "counties.shp"),
+      file.path(shapefiles_dir, "us_counties.shp")
+    )
+    
+    for (path in potential_paths) {
+      if (file.exists(path)) {
+        shapefile_path <- path
+        log_message(paste("Found county shapefile at:", path),
+                  level = "INFO", log_file = log_file, show_console = TRUE)
+        break
+      }
+    }
+    
+    # If no shapefile found, we'll try to download it
+    if (is.null(shapefile_path)) {
+      # Try to download county shapefile
+      log_message("No county shapefile found. Attempting to download...",
+                level = "INFO", log_file = log_file, show_console = TRUE)
+      
+      # Install tigris if needed
+      if (!requireNamespace("tigris", quietly = TRUE)) {
+        install.packages("tigris", repos = "https://cloud.r-project.org")
+      }
+      
+      library(tigris)
+      library(sf)
+      
+      # Download county shapefile
+      options(tigris_use_cache = TRUE)
+      log_message("Downloading US county shapefile using tigris package...",
+                level = "INFO", log_file = log_file, show_console = TRUE)
+      
+      county_sf <- tigris::counties(cb = TRUE, year = 2020)
+      
+      # Save to RDS file for future use
+      shapefile_path <- file.path(shapefiles_dir, "counties_2020.rds")
+      saveRDS(county_sf, shapefile_path)
+      
+      log_message(paste("Downloaded and saved county shapefile to:", shapefile_path),
+                level = "INFO", log_file = log_file, show_console = TRUE)
+    }
+    
+    # Now run the map generation with the shapefile
+    log_message("Generating maps for all variables and years...",
+               level = "INFO", log_file = log_file, show_console = TRUE)
     
     generate_conus_maps(
       output_dir = file.path(config$directories$output_dir, "maps"),
       db_path = config$database$full_db_path,
+      shapefile_path = shapefile_path,
       conus_only = config$maps$conus_only,
       parallel = config$processing$parallel
     )
@@ -718,3 +866,4 @@ log_message(paste("Maps directory:", config$directories$full_maps_dir),
            level = "INFO", log_file = log_file)
 log_message("=================================================\n", 
            level = "INFO", log_file = log_file)
+EOF < /dev/null
