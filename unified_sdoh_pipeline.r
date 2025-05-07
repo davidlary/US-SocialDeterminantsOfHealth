@@ -644,7 +644,7 @@ if (!"database" %in% skip_steps) {
   log_message(paste("Saved processed data to:", processed_data_path),
              level = "INFO", log_file = log_file)
   
-  # Load the database module directly
+  # Load the database module
   source("pipeline_modules/module_database.r")
 } else {
   log_message("\nSKIPPING STEP 4: CREATING UNIFIED DATABASE (restart mode)",
@@ -855,6 +855,35 @@ elapsed <- difftime(end_time, start_time, units = "mins")
 log_message("\n=================================================", 
            level = "INFO", log_file = log_file)
 log_message("UNIFIED SDOH PIPELINE COMPLETED", 
+
+# ---- Step: Generate CONUS Maps ----
+log_message("STEP: GENERATING CONUS MAPS FOR ALL VARIABLES", 
+            level = "INFO", show_console = TRUE)
+
+# Source the map generation script
+source(file.path(root_dir, "generate_conus_maps.r"))
+
+# Generate maps for all variables and years
+map_result <- tryCatch({
+  generate_conus_maps(
+    output_dir = file.path(output_dir, "maps"),
+    db_path = file.path(output_dir, "us_county_sdoh_data.duckdb"),
+    conus_only = TRUE,
+    parallel = FALSE
+  )
+  TRUE
+}, error = function(e) {
+  log_message(paste("ERROR: Map generation failed:", conditionMessage(e)), 
+              level = "ERROR", show_console = TRUE)
+  FALSE
+})
+
+if (map_result) {
+  log_message("Maps successfully generated", level = "INFO", show_console = TRUE)
+} else {
+  log_message("Map generation encountered errors", level = "WARN", show_console = TRUE)
+}
+
            level = "INFO", log_file = log_file)
 log_message(paste("Execution time:", round(elapsed, 2), "minutes"), 
            level = "INFO", log_file = log_file)
@@ -866,4 +895,3 @@ log_message(paste("Maps directory:", config$directories$full_maps_dir),
            level = "INFO", log_file = log_file)
 log_message("=================================================\n", 
            level = "INFO", log_file = log_file)
-EOF < /dev/null

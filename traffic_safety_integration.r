@@ -506,4 +506,4 @@ get_traffic_safety_data <- function(years = NULL, refresh = FALSE,
 
 # Let the pipeline know the enhanced module has loaded successfully
 log_message("Enhanced traffic safety integration module loaded successfully",
-           level = "INFO", show_console = TRUE)
+           level = "INFO")

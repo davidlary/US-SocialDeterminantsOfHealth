@@ -766,15 +766,19 @@ fetch_traffic_safety_data <- function(years,
   
   # Ensure we have GEOID for compatibility with the SDOH pipeline
   combined_data <- combined_data %>%
+    # Make sure all data quality flags are filled
     mutate(
-      GEOID = fips,  # Add GEOID for compatibility with SDOH pipeline
-      
-      # Make sure all data quality flags are filled
       across(ends_with("_data_quality"), 
             ~ifelse(is.na(.x), missing_flag, .x))
-    ) %>%
-    # Use GEOID consistently instead of fips to fix column naming inconsistency with process_extended_data_v2
-    rename_with(~gsub("^fips$", "GEOID", .), everything())
+    )
+    
+  # Check if fips column exists and use it for GEOID if it does
+  if ("fips" %in% names(combined_data)) {
+    combined_data <- combined_data %>%
+      mutate(GEOID = fips) %>%  # Add GEOID for compatibility with SDOH pipeline
+      # Use GEOID consistently instead of fips to fix column naming inconsistency
+      rename_with(~gsub("^fips$", "GEOID", .), everything())
+  }
   
   # Save the combined dataset to cache
   message("Saving combined traffic safety data to cache...")

@@ -2,6 +2,66 @@
 
 This enhanced module provides comprehensive traffic safety data analysis capabilities for the Social Determinants of Health (SDOH) pipeline. It includes geospatial analysis, data validation, time series forecasting, interactive dashboard, and optimized caching.
 
+## Quick Start
+
+Run the complete implementation with a single command:
+
+```bash
+./run_full_pipeline.sh
+```
+
+This script will:
+1. Remove existing database file to start fresh
+2. Fix traffic safety integration
+3. Populate the database with traffic safety data
+4. Run the unified pipeline with a force update
+5. Verify the implementation
+
+## Individual Scripts
+
+If you prefer to run the steps individually:
+
+1. Fix traffic safety integration:
+   ```bash
+   Rscript fix_traffic_safety_integration.r
+   ```
+
+2. Populate the database with traffic safety data:
+   ```bash
+   Rscript populate_traffic_safety_data.r
+   ```
+
+3. Run the unified pipeline with force update:
+   ```bash
+   Rscript unified_sdoh_pipeline.r --force-update
+   ```
+
+4. Verify the implementation:
+   ```bash
+   Rscript check_traffic_safety_variables.r
+   ```
+
+## Alternative: Direct Database Creation
+
+If you're experiencing issues with the full pipeline, you can use the direct database creation script to create a simplified database with traffic safety data:
+
+```bash
+Rscript create_unified_database_with_traffic_safety.r
+```
+
+This script:
+1. Creates a new database with the proper schema
+2. Adds county information from Census data
+3. Creates traffic safety variables
+4. Populates the database with sample traffic safety data
+5. Verifies the data has been properly added
+
+After running this script, you can verify the traffic safety data:
+
+```bash
+Rscript verify_traffic_safety_data.r
+```
+
 ## Key Features
 
 ### 1. Geospatial Analysis
@@ -48,12 +108,32 @@ This enhanced module provides comprehensive traffic safety data analysis capabil
 ## Components
 
 - `traffic_safety_integration.r` - Main integration module
+- `fix_traffic_safety_integration.r` - Script to fix integration issues
+- `populate_traffic_safety_data.r` - Script to populate database with traffic safety data
+- `check_traffic_safety_variables.r` - Script to verify traffic safety data in database
 - `traffic_safety_geospatial.r` - Geospatial analysis functions
 - `traffic_safety_validation.r` - Data validation framework
 - `traffic_safety_forecasting.r` - Time series forecasting capabilities
 - `traffic_safety_cache.r` - Enhanced caching system
 - `traffic_safety_dashboard.r` - Interactive Shiny dashboard
 - `traffic_safety_api_tests.r` - API integration tests
+
+## Traffic Safety Variables
+
+The following 12 traffic safety variables are included:
+
+- `traffic_fatalities` - Number of motor vehicle crash fatalities
+- `traffic_fatality_rate` - Motor vehicle crash fatalities per 100,000 population
+- `pedestrian_fatalities` - Number of pedestrian fatalities
+- `pedestrian_fatality_rate` - Pedestrian fatalities per 100,000 population  
+- `bicycle_fatalities` - Number of bicyclist fatalities
+- `bicycle_fatality_rate` - Bicyclist fatalities per 100,000 population
+- `motorcycle_fatalities` - Number of motorcycle fatalities
+- `motorcycle_fatality_rate` - Motorcycle fatalities per 100,000 population
+- `alcohol_impaired_fatalities` - Number of alcohol-impaired driving fatalities
+- `alcohol_impaired_fatality_rate` - Alcohol-impaired driving fatalities per 100,000 population
+- `speeding_related_fatalities` - Number of speeding-related fatalities
+- `speeding_related_fatality_rate` - Speeding-related fatalities per 100,000 population
 
 ## Usage
 
@@ -68,47 +148,27 @@ For standalone usage:
 source("traffic_safety_integration.r")
 
 # Fetch enhanced traffic safety data
-data <- fetch_enhanced_traffic_safety_data(
+data <- get_traffic_safety_data(
   years = 2010:2022,
-  use_validation = TRUE,
-  use_optimized_cache = TRUE,
-  generate_forecasts = TRUE,
-  spatial_analysis = TRUE
-)
-
-# Create visualizations
-vis_files <- create_traffic_safety_visualizations(
-  data,
-  output_dir = "output/visualizations/traffic_safety",
-  create_maps = TRUE,
-  create_forecast_plots = TRUE,
-  create_animation = TRUE
-)
-```
-
-### Interactive Dashboard
-
-```r
-# Launch the dashboard application
-source("traffic_safety_dashboard.r")
-launch_traffic_safety_dashboard(
-  traffic_data = data,  # Optional - will load data if not provided
-  port = 3838,
-  host = "0.0.0.0",
-  launch_browser = TRUE
+  refresh = TRUE,
+  parallel = TRUE
 )
 ```
 
 ### Database Integration
 
+The traffic safety data is automatically integrated into the SDOH database when running the unified pipeline:
+
 ```r
-# Add enhanced traffic safety data to the SDOH database
-add_traffic_safety_to_database(
-  traffic_data = data,
-  db_path = "us_county_sdoh_data.duckdb",
-  add_forecasts = TRUE,
-  add_spatial = TRUE
-)
+# Run the unified pipeline with force update
+Rscript unified_sdoh_pipeline.r --force-update
+```
+
+If you need to manually populate the database with traffic safety data:
+
+```r
+# Populate the database with traffic safety data
+Rscript populate_traffic_safety_data.r
 ```
 
 ## Data Sources
@@ -120,82 +180,24 @@ This module analyzes traffic safety data from multiple authoritative sources:
 - State transportation department data (where available)
 - Federal Highway Administration (FHWA) data
 
-## Metrics
+## Troubleshooting
 
-The module provides the following key metrics:
+If you encounter any issues:
 
-| Metric | Description | Unit |
-|--------|-------------|------|
-| `traffic_fatality_count` | Total traffic fatalities | Count |
-| `traffic_fatality_rate_per_100k` | Traffic fatality rate per 100k population | Rate |
-| `dui_fatality_count` | Alcohol-involved fatalities | Count |
-| `dui_fatality_rate_per_100k` | Alcohol-involved fatality rate | Rate |
-| `ped_bike_fatality_count` | Pedestrian/cyclist fatalities | Count |
-| `ped_bike_fatality_rate_per_100k` | Pedestrian/cyclist fatality rate | Rate |
-| `speeding_fatality_count` | Speed-related fatalities | Count |
-| `speeding_fatality_rate_per_100k` | Speed-related fatality rate | Rate |
+1. Check the database for traffic safety data:
+   ```bash
+   Rscript check_traffic_safety_variables.r
+   ```
 
-## Dashboard Features
+2. Verify the cache file exists:
+   ```bash
+   ls -l data/cache/traffic_safety_data.rds
+   ```
 
-The Traffic Safety Dashboard provides an interactive web interface structured in tabs:
-
-1. **Dashboard Overview**
-   - Summary metrics and key indicators
-   - National trend visualization
-   - Geographic distribution map
-   - Year-over-year change indicators
-
-2. **Safety Metrics**
-   - Detailed analysis of traffic safety indicators
-   - County-level rankings and comparisons
-   - Fatality type breakdowns
-   - Risk factor analysis
-
-3. **Transportation Infrastructure**
-   - Infrastructure metrics and their relationship to safety
-   - Transit usage vs. fatality rates
-   - Infrastructure quality indicators
-   - Multi-variable correlation analysis
-
-4. **County Explorer**
-   - County-level deep dives
-   - Neighboring county comparisons
-   - Trend analysis for individual counties
-   - Metric cards with year-over-year changes
-
-5. **Time Series Analysis**
-   - Trend analysis with smoothing options
-   - Seasonal pattern detection
-   - Multi-variable trend comparisons
-   - Forecast visualization
-
-6. **Data Quality**
-   - Data coverage visualizations
-   - Quality metrics by variable
-   - Interpolation analysis
-   - Source documentation
-
-## Testing
-
-To run the comprehensive test suite:
-
-```r
-# Run all tests
-Rscript test_traffic_safety_integration.r
-
-# Run specific API tests
-Rscript test_traffic_safety_api.r
-```
-
-## Output
-
-The module generates:
-- Enhanced traffic safety dataset with quality flags
-- Hotspot maps and spatial cluster visualizations
-- Trend analysis and forecasts
-- Data quality reports
-- Custom database tables and views
-- Interactive dashboard application
+3. Check for traffic safety maps:
+   ```bash
+   ls -l output/maps/by_variable/traffic_fatality_rate_*.png
+   ```
 
 ## Requirements
 
