@@ -287,6 +287,124 @@ generate_random_data <- function(variable_name, unit_type, n) {
   }
 }
 
+# Function to simulate data with proper time interpolation
+generate_temporal_data <- function(variable_name, unit_type, counties, years) {
+  # Create a data frame for results
+  result <- data.frame()
+  
+  # For each county, create time series with appropriate gaps and interpolation
+  for (county in counties) {
+    # Determine which years have direct data based on data source patterns
+    # Example pattern: Census years (1970, 1980, 1990, 2000, 2010, 2020) for census variables
+    # ACS data starting in 2009 annually for ACS variables
+    # CDC data starting around 2015 for health variables
+    # Traffic safety data from ~1975
+    
+    # Default pattern: Major source years with some additional direct years
+    
+    # Get random direct data years based on variable type
+    if (grepl("population|total|median_age", variable_name)) {
+      # Census variables: Decennial years plus some additional years
+      direct_years <- c(1970, 1980, 1990, 2000, 2010, 2020)
+      # Add ACS years for recent period
+      if (any(years >= 2009)) {
+        direct_years <- union(direct_years, seq(2009, max(years), by = 1))
+      }
+    } else if (grepl("income|poverty|education|housing", variable_name)) {
+      # Socioeconomic variables: Some historical points plus ACS
+      direct_years <- c(1970, 1980, 1990, 2000)
+      # Add ACS years for recent period
+      if (any(years >= 2009)) {
+        direct_years <- union(direct_years, seq(2009, max(years), by = 1))
+      }
+    } else if (grepl("health|disease|mortality|life", variable_name)) {
+      # Health variables: More recent with some historical
+      direct_years <- c(1980, 1990, 2000)
+      # Add recent years
+      if (any(years >= 2010)) {
+        direct_years <- union(direct_years, seq(2010, max(years), by = 1))
+      }
+    } else if (grepl("fatalities|traffic|crash", variable_name)) {
+      # Traffic safety: FARS data from 1975
+      if (any(years >= 1975)) {
+        direct_years <- seq(1975, max(years), by = 1)
+      } else {
+        direct_years <- c()
+      }
+    } else {
+      # Other variables: Some sparse points
+      direct_years <- c(1970, 1980, 1990, 2000, 2010, 2020)
+      # Add some random years
+      additional_years <- sample(setdiff(years, direct_years), 
+                                min(10, length(setdiff(years, direct_years))))
+      direct_years <- union(direct_years, additional_years)
+    }
+    
+    # Filter to years that are in our target range
+    direct_years <- intersect(direct_years, years)
+    
+    # For each year in our range, determine data quality and generate values
+    county_data <- data.frame(
+      geoid = county,
+      year = years,
+      variable_name = variable_name,
+      stringsAsFactors = FALSE
+    )
+    
+    # Generate direct data values at specified years
+    direct_indices <- which(county_data$year %in% direct_years)
+    county_data$data_quality <- "interpolated"  # Default
+    county_data$data_quality[direct_indices] <- "direct"
+    
+    # Generate direct data first
+    direct_data <- generate_random_data(variable_name, unit_type, length(direct_indices))
+    
+    # Create full vector for all years
+    all_values <- rep(NA, nrow(county_data))
+    all_values[direct_indices] <- direct_data
+    
+    # Linear interpolation for missing years that fall between direct data points
+    if (length(direct_indices) > 1) {
+      for (i in 1:(length(direct_indices)-1)) {
+        start_idx <- direct_indices[i]
+        end_idx <- direct_indices[i+1]
+        
+        if (end_idx - start_idx > 1) {
+          # Get the values at the endpoints
+          start_val <- all_values[start_idx]
+          end_val <- all_values[end_idx]
+          
+          # Calculate the step size for interpolation
+          step <- (end_val - start_val) / (end_idx - start_idx)
+          
+          # Fill in the interpolated values
+          for (j in (start_idx+1):(end_idx-1)) {
+            steps_from_start <- j - start_idx
+            all_values[j] <- start_val + (step * steps_from_start)
+            county_data$data_quality[j] <- "interpolated"
+          }
+        }
+      }
+    }
+    
+    # Fill remaining NA values (outside known ranges) with estimated data
+    na_indices <- which(is.na(all_values))
+    if (length(na_indices) > 0) {
+      estimated_data <- generate_random_data(variable_name, unit_type, length(na_indices))
+      all_values[na_indices] <- estimated_data
+      county_data$data_quality[na_indices] <- "estimated"
+    }
+    
+    # Assign all values
+    county_data$value <- all_values
+    
+    # Add to result
+    result <- rbind(result, county_data)
+  }
+  
+  return(result)
+}
+
 # Process variables in chunks to avoid memory issues
 chunk_size <- 50
 var_chunks <- split(all_variables$variable_name, ceiling(seq_along(all_variables$variable_name) / chunk_size))
@@ -308,12 +426,13 @@ for (chunk_idx in seq_along(var_chunks)) {
     
     if (nrow(var_info) == 0) next
     
-    # Create data for this variable
-    var_data <- grid
-    var_data$variable_name <- var
-    var_data$value <- generate_random_data(var, var_info$units[1], nrow(var_data))
-    var_data$data_quality <- sample(c("direct", "interpolated", "estimated"), nrow(var_data), 
-                                  replace = TRUE, prob = c(0.6, 0.3, 0.1))
+    # Generate data with temporal patterns and interpolation
+    var_data <- generate_temporal_data(
+      variable_name = var,
+      unit_type = var_info$units[1],
+      counties = counties_sample,
+      years = years
+    )
     
     # Add to chunk data
     chunk_data[[var]] <- var_data
