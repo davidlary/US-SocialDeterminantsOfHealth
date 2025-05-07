@@ -229,11 +229,11 @@ dbAppendTable(con, "variables", all_variables)
 log_message("Creating sample data for all variables...")
 
 # Years to generate data for
-years <- 2018:2022
+years <- 1970:2022
 
 # Select a sample of counties to keep data generation reasonable
 set.seed(123) # For reproducibility
-counties_sample <- sample(counties_df$geoid, min(200, nrow(counties_df)))
+counties_sample <- counties_df$geoid  # Use all counties for comprehensive coverage
 
 # Create grid of counties, years, and variables
 log_message("Creating data grid for county-year-variable combinations...")
