@@ -1,58 +1,122 @@
-# Quick Start Guide: Social Determinants of Health Pipeline
+# SDOH Database: Quick Start Guide
 
-This quick start guide provides the most essential commands to run the pipeline correctly with all 255 variables.
+This guide provides quick instructions for using the Social Determinants of Health (SDOH) database with all 255+ variables including traffic safety data.
 
-## Running the Complete Pipeline
+## Quick Start: Create Complete Database
 
-The pipeline has been fully fixed and enhanced to include all 255 variables, including traffic safety variables. To run the complete pipeline with all enhancements:
+The fastest way to create a complete database with all variables:
 
 ```bash
+# Make the script executable
+chmod +x run_full_database_rebuild_and_verification.sh
+
+# Run the comprehensive implementation
+./run_full_database_rebuild_and_verification.sh
+```
+
+This single command:
+- Creates the database with all tables and indexes
+- Adds all 255+ variables with proper metadata
+- Populates the database with data for all variables
+- Verifies all variables including traffic safety
+- Generates maps for all variables
+- Reports on data quality and coverage
+
+## Alternative Approaches
+
+### Direct Database Creation
+
+```bash
+# Create the database directly
+Rscript create_unified_database_with_all_variables.r
+```
+
+This creates a complete database with all 255+ variables including traffic safety.
+
+### Original Pipeline with Fixes
+
+```bash
+# Run the original pipeline with fixes
 Rscript unified_sdoh_pipeline.r
 ```
 
-This will:
-- Build the variable crosswalk
-- Fetch data from all sources (including traffic safety data)
-- Process all 255 variables 
-- Create a fully populated database
-- Generate maps for all variables
-
-## Verify Results
-
-Check that all variables are in the database:
-```bash
-# Verify all 255 variables are in the database
-Rscript check_database.r
-
-# Verify traffic safety variables specifically
-Rscript check_traffic_safety_variables.r
-
-# Check map generation
-ls -l output/maps/by_variable/ | wc -l
-```
-
-## Specific Commands
-
-If you need to restart from a specific step:
+### Verify Database
 
 ```bash
-# Restart from the database creation
-Rscript unified_sdoh_pipeline.r --restart-from=database
+# Verify all variables
+Rscript verify_all_variables.r
 
-# Restart from map generation
-Rscript unified_sdoh_pipeline.r --restart-from=maps
+# Verify traffic safety specifically
+Rscript verify_traffic_safety_data.r
 ```
 
-If you encounter any issues, use the force-full-rebuild flag:
+These scripts check that the database contains all 255+ variables with proper data quality.
 
-```bash
-Rscript unified_sdoh_pipeline.r --force-full-rebuild
+## Working with the Database
+
+### Query Example
+
+```r
+library(DBI)
+library(duckdb)
+
+# Connect to the database
+con <- dbConnect(duckdb(), dbdir = "output/us_county_sdoh_unified.duckdb")
+
+# Basic query for traffic fatality rates
+fatality_data <- dbGetQuery(con, "
+  SELECT c.geoid, c.name, c.state_name, d.year, d.value
+  FROM counties c
+  JOIN sdoh_data d ON c.geoid = d.geoid
+  WHERE d.variable_name = 'traffic_fatality_rate'
+  AND d.year = 2020
+  ORDER BY d.value DESC
+  LIMIT 20
+")
+
+# Get a list of all available variables
+variables <- dbGetQuery(con, "SELECT variable_name, category FROM variables")
+
+# Close connection
+dbDisconnect(con, shutdown = TRUE)
 ```
 
-## Need More Info?
+### Maps
 
-See the detailed instructions in the following files:
-- `HOW_TO_RUN_PIPELINE.md`: Step-by-step instructions for running the pipeline
-- `FINAL_FIX_SUMMARY.md`: Summary of all fixes implemented
-- `docs/TRAFFIC_SAFETY_IMPLEMENTATION.md`: Details on the traffic safety module
-EOF < /dev/null
+Maps are automatically generated when running the full script. They are available in:
+
+```
+output/maps/by_variable/
+```
+
+To regenerate maps manually:
+
+```r
+# Generate maps for visualization
+Rscript generate_county_maps.r
+```
+
+## Available Variables
+
+The database includes 255+ variables across multiple domains:
+
+- Demographics and Race/Ethnicity (30+ variables)
+- Socioeconomic Status (25+ variables)
+- Education (20+ variables)
+- Housing (25+ variables)
+- Transportation (15+ variables)
+- Health Behaviors and Outcomes (40+ variables)
+- Healthcare Access and Insurance (15+ variables)
+- Environmental Factors (25+ variables)
+- Traffic Safety (12 variables)
+- Food Environment and Access (20+ variables)
+- Social Cohesion and Capital (10+ variables)
+- Built Environment (20+ variables)
+
+## Documentation
+
+For more detailed information:
+- `UNIFIED_PIPELINE_GUIDE.md` - Comprehensive guide
+- `HOW_TO_RUN_PIPELINE.md` - Detailed instructions
+- `TRAFFIC_SAFETY_IMPLEMENTATION_SUMMARY.md` - Traffic safety details
+- `COMPLETE_IMPLEMENTATION_SUMMARY.md` - Implementation overview

@@ -1,4 +1,4 @@
-#\!/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 
 # module_database.r - COMPLETE FIXED VERSION WITH DATA INSERTION
 # Database management module for the SDOH pipeline
@@ -38,7 +38,7 @@ STEP 4: CREATING UNIFIED DATABASE",
   
   # Create the database directory if it doesn't exist
   db_dir <- dirname(db_path)
-  if (\!dir.exists(db_dir)) {
+  if (!dir.exists(db_dir)) {
     dir.create(db_dir, recursive = TRUE, showWarnings = FALSE)
   }
   
@@ -55,7 +55,7 @@ STEP 4: CREATING UNIFIED DATABASE",
              level = "INFO", show_console = TRUE)
              
   # Determine whether to use incremental mode
-  use_incremental <- incremental && file.exists(unified_db_path) && \!force_full_rebuild && \!overwrite
+  use_incremental <- incremental && file.exists(unified_db_path) && !force_full_rebuild && !overwrite
   
   if (use_incremental) {
     log_message("Using INCREMENTAL processing mode - only updating new or changed data",
@@ -67,10 +67,10 @@ STEP 4: CREATING UNIFIED DATABASE",
     } else if (overwrite) {
       log_message("Overwrite specified - using FULL processing mode",
                  level = "INFO", show_console = TRUE)
-    } else if (\!file.exists(unified_db_path)) {
+    } else if (!file.exists(unified_db_path)) {
       log_message("Database does not exist yet - using FULL processing mode",
                  level = "INFO", show_console = TRUE)
-    } else if (\!incremental) {
+    } else if (!incremental) {
       log_message("Incremental processing disabled - using FULL processing mode",
                  level = "INFO", show_console = TRUE)
     }
@@ -159,13 +159,13 @@ STEP 4: CREATING UNIFIED DATABASE",
     distinct()
   
   # Add missing columns if needed
-  if (\!"state_fips" %in% names(unique_counties)) {
+  if (!"state_fips" %in% names(unique_counties)) {
     unique_counties$state_fips <- substr(unique_counties$geoid, 1, 2)
     log_message("Added state_fips column derived from geoid",
                level = "INFO", show_console = TRUE)
   }
   
-  if (\!"state_name" %in% names(unique_counties)) {
+  if (!"state_name" %in% names(unique_counties)) {
     # Create a state lookup table
     state_lookup <- data.frame(
       state_fips = sprintf("%02d", 1:56),
@@ -184,14 +184,14 @@ STEP 4: CREATING UNIFIED DATABASE",
   }
   
   # Add county name
-  if (\!"name" %in% names(unique_counties)) {
+  if (!"name" %in% names(unique_counties)) {
     unique_counties$name <- paste("County", unique_counties$geoid)
   }
   
   # Ensure all required columns are present
   required_county_cols <- c("geoid", "name", "state_fips", "state_name")
   for (col in required_county_cols) {
-    if (\!col %in% names(unique_counties)) {
+    if (!col %in% names(unique_counties)) {
       unique_counties[[col]] <- NA
     }
   }
@@ -486,7 +486,41 @@ STEP 4: CREATING UNIFIED DATABASE",
     
     # Create a subset of data with just the necessary columns for pivoting
     batch_cols <- c(metadata_cols, batch_vars)
-    batch_data <- processed_data[, batch_cols]
+    
+    # Debug the column types
+    log_message("Checking column types for batch...", level = "INFO", show_console = TRUE)
+    for (col in batch_vars) {
+      if (col %in% names(processed_data)) {
+        log_message(paste("Column", col, "type:", class(processed_data[[col]])[1]), level = "INFO", show_console = TRUE)
+      }
+    }
+    
+    # Ensure all batch columns exist in the data
+    existing_batch_cols <- batch_cols[batch_cols %in% names(processed_data)]
+    if (length(existing_batch_cols) < length(batch_cols)) {
+      log_message(paste("Warning: Some batch columns don't exist in the data. Requested:", length(batch_cols), 
+                        "Available:", length(existing_batch_cols)),
+                  level = "WARN", show_console = TRUE)
+    }
+    
+    # Extract data with only existing columns
+    batch_data <- processed_data[, existing_batch_cols, drop=FALSE]
+    
+    # Ensure metadata_cols are properly formatted
+    for (col in metadata_cols) {
+      if (col %in% names(batch_data)) {
+        # Convert character year to numeric if needed
+        if (col == "year" && is.character(batch_data[[col]])) {
+          batch_data[[col]] <- as.numeric(batch_data[[col]])
+          log_message("Converted year column from character to numeric", level = "INFO", show_console = TRUE)
+        }
+        # Ensure geoid is character
+        if (col == "geoid" && !is.character(batch_data[[col]])) {
+          batch_data[[col]] <- as.character(batch_data[[col]])
+          log_message("Converted geoid column to character", level = "INFO", show_console = TRUE)
+        }
+      }
+    }
     
     # Get data quality and interpolation flags if available
     data_quality_cols <- c()
@@ -514,14 +548,32 @@ STEP 4: CREATING UNIFIED DATABASE",
     log_message("Pivoting batch data to long format...",
                level = "INFO", show_console = TRUE)
     
+    # Filter batch_vars to only include columns that exist in batch_data
+    available_vars <- batch_vars[batch_vars %in% names(batch_data)]
+    if (length(available_vars) == 0) {
+      log_message("No variables available for pivoting in this batch, skipping...",
+                 level = "WARN", show_console = TRUE)
+      next
+    }
+    
+    # Print all column names and their types for debugging
+    log_message("Columns and types in batch_data:", level = "INFO", show_console = TRUE)
+    for (col_name in names(batch_data)) {
+      log_message(paste("  -", col_name, ":", class(batch_data[[col_name]])[1]), 
+                 level = "INFO", show_console = TRUE)
+    }
+    
     # Handle data quality flags if they exist
-    if (length(data_quality_cols) > 0) {
-      batch_long <- batch_data %>%
-        pivot_longer(
-          cols = all_of(batch_vars),
-          names_to = "variable_name",
-          values_to = "value"
-        )
+    tryCatch({
+      if (length(data_quality_cols) > 0) {
+        batch_long <- batch_data %>%
+          # Convert all variable columns to numeric to ensure consistency
+          mutate(across(all_of(available_vars), as.numeric)) %>%
+          pivot_longer(
+            cols = all_of(available_vars),
+            names_to = "variable_name",
+            values_to = "value"
+          )
       
       # Process quality flags
       if (length(data_quality_cols) > 0) {
@@ -590,7 +642,7 @@ STEP 4: CREATING UNIFIED DATABASE",
               orig_row <- which(batch_data$geoid == geoid & batch_data$year == year)
               if (length(orig_row) > 0) {
                 # If interpolated, set method
-                if (\!is.na(batch_data[[icol]][orig_row[1]]) && batch_data[[icol]][orig_row[1]]) {
+                if (!is.na(batch_data[[icol]][orig_row[1]]) && batch_data[[icol]][orig_row[1]]) {
                   batch_long$interpolation_method[j] <- "linear"
                   batch_long$data_quality[j] <- "interpolated"
                 }
@@ -601,38 +653,85 @@ STEP 4: CREATING UNIFIED DATABASE",
       }
     } else {
       # No data quality flags, simpler pivot
-      batch_long <- batch_data %>%
-        pivot_longer(
-          cols = all_of(batch_vars),
-          names_to = "variable_name",
-          values_to = "value"
-        ) %>%
-        mutate(data_quality = "direct")  # Default quality flag
+      tryCatch({
+        batch_long <- batch_data %>%
+          # Convert all variable columns to numeric to ensure consistency
+          mutate(across(all_of(available_vars), ~as.numeric(as.character(.)))) %>%
+          pivot_longer(
+            cols = all_of(available_vars),
+            names_to = "variable_name",
+            values_to = "value"
+          ) %>%
+          mutate(data_quality = "direct")  # Default quality flag
+      }, error = function(e) {
+        log_message(paste("Error during pivot_longer: ", conditionMessage(e)), 
+                   level = "ERROR", show_console = TRUE)
+        
+        # Try a more conservative approach - process one column at a time
+        log_message("Attempting to process columns individually...", 
+                   level = "INFO", show_console = TRUE)
+        
+        all_pivoted_rows <- list()
+        
+        for (var in available_vars) {
+          tryCatch({
+            # Create a temporary dataframe with just this variable
+            temp_df <- batch_data[, c(metadata_cols, var)]
+            temp_df$value <- as.numeric(as.character(temp_df[[var]]))
+            temp_df$variable_name <- var
+            temp_df$data_quality <- "direct"
+            
+            # Remove the original variable column
+            temp_df[[var]] <- NULL
+            
+            # Store the result
+            all_pivoted_rows[[var]] <- temp_df
+            
+            log_message(paste("Successfully processed variable:", var), 
+                       level = "INFO", show_console = TRUE)
+          }, error = function(var_error) {
+            log_message(paste("Error processing variable", var, ":", conditionMessage(var_error)), 
+                       level = "WARN", show_console = TRUE)
+          })
+        }
+        
+        # Combine all successful pivots
+        if (length(all_pivoted_rows) > 0) {
+          batch_long <- bind_rows(all_pivoted_rows)
+          log_message(paste("Successfully created long format data from", length(all_pivoted_rows), 
+                            "out of", length(available_vars), "variables"), 
+                     level = "INFO", show_console = TRUE)
+        } else {
+          log_message("Failed to create any long format data, skipping batch", 
+                     level = "ERROR", show_console = TRUE)
+          next
+        }
+      })
     }
     
     # Add required columns
-    if (\!"data_source" %in% names(batch_long)) {
+    if (!"data_source" %in% names(batch_long)) {
       batch_long$data_source <- "pipeline"
     }
     
-    if (\!"data_vintage" %in% names(batch_long)) {
+    if (!"data_vintage" %in% names(batch_long)) {
       batch_long$data_vintage <- format(Sys.Date(), "%Y")
     }
     
-    if (\!"interpolation_method" %in% names(batch_long)) {
+    if (!"interpolation_method" %in% names(batch_long)) {
       batch_long$interpolation_method <- NA
     }
     
     # Add confidence interval columns if missing
-    if (\!"ci_lower" %in% names(batch_long)) {
+    if (!"ci_lower" %in% names(batch_long)) {
       batch_long$ci_lower <- NA
     }
     
-    if (\!"ci_upper" %in% names(batch_long)) {
+    if (!"ci_upper" %in% names(batch_long)) {
       batch_long$ci_upper <- NA
     }
     
-    if (\!"confidence_level" %in% names(batch_long)) {
+    if (!"confidence_level" %in% names(batch_long)) {
       batch_long$confidence_level <- NA
     }
     
@@ -642,7 +741,7 @@ STEP 4: CREATING UNIFIED DATABASE",
     # Retain only rows with non-NA values to ensure we only have REAL data
     # This is important - we don't want synthetic data, just real data
     batch_long <- batch_long %>%
-      filter(\!is.na(value))
+      filter(!is.na(value))
     
     # Ensure all columns required by the schema are present
     required_cols <- c("geoid", "year", "variable_name", "value", "data_quality", 
@@ -662,7 +761,7 @@ STEP 4: CREATING UNIFIED DATABASE",
                level = "INFO", show_console = TRUE)
     
     # Clear existing data for these variables if not in incremental mode
-    if (\!use_incremental) {
+    if (!use_incremental) {
       var_list <- paste0("'", paste(batch_vars, collapse = "', '"), "'")
       delete_query <- paste0("DELETE FROM sdoh_data WHERE variable_name IN (", var_list, ")")
       tryCatch({
@@ -1023,7 +1122,7 @@ verify_all_variables <- function(db_path, crosswalk_path = NULL) {
   })
   
   # Get variables from crosswalk
-  if (\!is.null(crosswalk_path) && file.exists(crosswalk_path)) {
+  if (!is.null(crosswalk_path) && file.exists(crosswalk_path)) {
     crosswalk <- read.csv(crosswalk_path, stringsAsFactors = FALSE)
     crosswalk_vars <- unique(crosswalk$variable_name)
   } else {
@@ -1057,4 +1156,3 @@ verify_all_variables <- function(db_path, crosswalk_path = NULL) {
 log_message("Database module loaded successfully", level = "INFO", show_console = TRUE)
 message("Database module with complete data insertion loaded successfully")
 TRUE
-EOF < /dev/null
