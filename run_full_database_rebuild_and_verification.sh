@@ -30,8 +30,12 @@ fi
 
 echo "Variable verification completed successfully."
 
-# Step 3: Additional verification for traffic safety data
-echo "Performing specific verification for traffic safety data..."
+# Step 3: Enhanced verification for traffic safety data
+echo "Performing enhanced verification for traffic safety data..."
+Rscript verify_traffic_safety_database.r
+
+# Also run the standard verification for compatibility
+echo "Running additional traffic safety verification..."
 Rscript verify_traffic_safety_data.r
 
 # Step 4: Generate maps for visualization
