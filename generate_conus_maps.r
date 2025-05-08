@@ -192,6 +192,81 @@ generate_conus_maps <- function(output_dir = "output/maps",
     
     if (!data_table_found) {
       cat("ERROR: No suitable data tables found in database.\n")
+      
+      # Check if tables exist but are empty
+      all_tables <- dbListTables(con)
+      cat("Available tables in database:", paste(all_tables, collapse=", "), "\n")
+      
+      # Check specifically for sdoh_data table
+      if ("sdoh_data" %in% all_tables) {
+        row_count <- dbGetQuery(con, "SELECT COUNT(*) as count FROM sdoh_data")[1,1]
+        if (row_count == 0) {
+          cat("The sdoh_data table exists but is empty. The database needs to be populated with data.\n")
+          cat("Please run the full pipeline to ensure data is loaded into the database.\n")
+        } else {
+          # Check variable coverage
+          var_count <- dbGetQuery(con, "SELECT COUNT(DISTINCT variable_name) as count FROM sdoh_data")[1,1]
+          cat("The sdoh_data table has", row_count, "rows and", var_count, "variables.\n")
+          
+          # Print a sample of variable names for debugging
+          sample_vars <- dbGetQuery(con, "SELECT DISTINCT variable_name FROM sdoh_data LIMIT 10")
+          cat("Sample variables:", paste(sample_vars$variable_name, collapse=", "), "\n")
+          
+          # Check if specifically traffic safety variables exist
+          if (var_count > 0) {
+            traffic_vars <- dbGetQuery(con, "SELECT DISTINCT variable_name FROM sdoh_data WHERE variable_name LIKE '%traffic%' OR variable_name LIKE '%fatality%'")
+            if (nrow(traffic_vars) > 0) {
+              cat("Found", nrow(traffic_vars), "traffic safety related variables:", 
+                  paste(traffic_vars$variable_name, collapse=", "), "\n")
+            } else {
+              cat("No traffic safety variables found in the database.\n")
+            }
+          }
+        }
+      } else if ("county_sdoh_data" %in% all_tables) {
+        # Check the old format table
+        cols <- dbListFields(con, "county_sdoh_data")
+        col_count <- length(cols)
+        traffic_cols <- grep("traffic|fatality", cols, value=TRUE)
+        
+        cat("The county_sdoh_data table exists with", col_count, "columns.\n")
+        if (length(traffic_cols) > 0) {
+          cat("Found", length(traffic_cols), "traffic safety related columns:", 
+              paste(traffic_cols, collapse=", "), "\n")
+        } else {
+          cat("No traffic safety columns found in the county_sdoh_data table.\n")
+        }
+        
+        # Check if the table has data
+        row_count <- dbGetQuery(con, "SELECT COUNT(*) as count FROM county_sdoh_data")[1,1]
+        if (row_count == 0) {
+          cat("The county_sdoh_data table is empty. The database needs to be populated with data.\n")
+        } else {
+          cat("The county_sdoh_data table has", row_count, "rows.\n")
+          
+          # Try to diagnose why we can't find the data
+          cat("Attempting to diagnose data access issues...\n")
+          
+          # Check for geoid and year columns
+          if ("geoid" %in% cols || "GEOID" %in% cols) {
+            geoid_col <- if ("GEOID" %in% cols) "GEOID" else "geoid"
+            if ("year" %in% cols) {
+              # Get year range
+              year_range <- dbGetQuery(con, sprintf("SELECT MIN(year) as min_year, MAX(year) as max_year FROM county_sdoh_data"))
+              cat("Year range in database:", year_range$min_year, "to", year_range$max_year, "\n")
+              
+              # Try to get some sample data
+              sample_data <- dbGetQuery(con, sprintf("SELECT %s, year FROM county_sdoh_data LIMIT 5", geoid_col))
+              cat("Sample data from county_sdoh_data:\n")
+              print(sample_data)
+            }
+          }
+        }
+      } else {
+        cat("Neither sdoh_data nor county_sdoh_data tables exist in the database.\n")
+        cat("Please run the full pipeline to create and populate the database tables.\n")
+      }
+      
       dbDisconnect(con)
       return(FALSE)
     }
@@ -756,14 +831,40 @@ generate_conus_maps <- function(output_dir = "output/maps",
     # Create a cluster
     cl <- parallel::makeCluster(cores)
     
+    # First, verify all required objects exist
+    required_objects <- c("county_sf", "variable_metadata", "category_palettes", "default_palette", 
+                         "year_dir", "variable_dir", "combined_dir", "overwrite", 
+                         "tables_to_try", "db_path")
+    
+    # Check for any missing objects
+    missing_objects <- required_objects[!sapply(required_objects, exists)]
+    if (length(missing_objects) > 0) {
+      cat("ERROR: The following required objects are missing:", 
+          paste(missing_objects, collapse=", "), "\n")
+      parallel::stopCluster(cl)
+      return(FALSE)
+    }
+    
+    # Create a function to load the shapefile (to prevent 'county_sf' not found error)
+    if (is.null(county_sf)) {
+      cat("ERROR: county_sf is NULL. Cannot proceed with map generation.\n")
+      parallel::stopCluster(cl)
+      return(FALSE)
+    }
+    
+    # Save county_sf to a temporary file for workers to load
+    temp_shapefile <- tempfile(fileext = ".rds")
+    saveRDS(county_sf, temp_shapefile)
+    cat("Saved shapefile to temporary file for worker processes:", temp_shapefile, "\n")
+    
     # Export necessary variables to the cluster
     parallel::clusterExport(cl, c(
-      "county_sf", "variable_metadata", "category_palettes", "default_palette",
+      "variable_metadata", "category_palettes", "default_palette",
       "year_dir", "variable_dir", "combined_dir", "overwrite", "tables_to_try",
-      "db_path", "con"
+      "db_path", "temp_shapefile"
     ))
     
-    # Export necessary functions
+    # Export necessary functions and load libraries in each worker
     parallel::clusterEvalQ(cl, {
       library(dplyr)
       library(ggplot2)
@@ -775,6 +876,9 @@ generate_conus_maps <- function(output_dir = "output/maps",
       
       # Create database connection for each worker
       con <- dbConnect(duckdb(), db_path)
+      
+      # Load shapefile from temporary file
+      county_sf <- readRDS(temp_shapefile)
     })
     
     # Generate map task combinations
@@ -792,6 +896,11 @@ generate_conus_maps <- function(output_dir = "output/maps",
       dbDisconnect(con)
     })
     parallel::stopCluster(cl)
+    
+    # Clean up temporary file
+    if (file.exists(temp_shapefile)) {
+      file.remove(temp_shapefile)
+    }
     
     # Count successful maps
     maps_created <- sum(!sapply(results, is.null))
