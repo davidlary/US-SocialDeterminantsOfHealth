@@ -8,6 +8,6 @@ source("generate_conus_maps.r")
 # Call the new function with parameters that match the old behavior
 generate_conus_maps(
   output_dir = "output/maps",
-  db_path = "output/us_county_sdoh_unified.duckdb",  # Use the unified database path
+  db_path = "us_county_sdoh_data.duckdb",
   conus_only = TRUE
 )

@@ -63,6 +63,8 @@ generate_conus_maps <- function(output_dir = "output/maps",
                                years = NULL,
                                variables = NULL, 
                                conus_only = TRUE,
+                               include_alaska = FALSE,
+                               exclude_states = NULL,
                                parallel = FALSE,
                                cores = 2,
                                overwrite = FALSE) {
@@ -399,25 +401,71 @@ generate_conus_maps <- function(output_dir = "output/maps",
     }
   }
   
-  # Filter to CONUS if requested
+  # Extract state FIPS for all counties
+  if (nchar(county_sf$GEOID[1]) >= 2) {
+    state_fips <- substr(county_sf$GEOID, 1, 2)
+  } else if ("STATEFP" %in% names(county_sf)) {
+    state_fips <- county_sf$STATEFP
+  } else {
+    cat("WARNING: Cannot determine state FIPS from GEOID. Using all counties.\n")
+    state_fips <- rep("", nrow(county_sf))
+  }
+  
+  # Default state filtering
+  states_to_exclude <- c()
+  
+  # Continental US filtering (excludes territories and optionally AK, HI)
   if (conus_only) {
-    # FIPS codes for Alaska (02), Hawaii (15), Puerto Rico (72), and other territories
-    non_conus_states <- c("02", "15", "72", "60", "66", "69", "78")
+    # FIPS codes for territories - always exclude these
+    territories <- c("72", "60", "66", "69", "78")
+    states_to_exclude <- c(states_to_exclude, territories)
     
-    # Extract state FIPS from GEOID (first 2 digits)
-    if (nchar(county_sf$GEOID[1]) >= 2) {
-      state_fips <- substr(county_sf$GEOID, 1, 2)
-    } else if ("STATEFP" %in% names(county_sf)) {
-      state_fips <- county_sf$STATEFP
-    } else {
-      cat("WARNING: Cannot determine state FIPS from GEOID. Using all counties.\n")
-      state_fips <- rep("", nrow(county_sf))
+    # Exclude Alaska and Hawaii by default in CONUS mode unless explicitly included
+    if (!include_alaska) {
+      states_to_exclude <- c(states_to_exclude, "02")  # Alaska
     }
     
-    # Filter to CONUS counties
-    conus_counties <- !state_fips %in% non_conus_states
-    county_sf <- county_sf[conus_counties, ]
-    cat("Filtered to", nrow(county_sf), "counties in the Continental US (CONUS)\n")
+    # Always exclude Hawaii in CONUS mode (traditional definition)
+    states_to_exclude <- c(states_to_exclude, "15")  # Hawaii
+  }
+  
+  # Add any explicitly excluded states
+  if (!is.null(exclude_states) && length(exclude_states) > 0) {
+    states_to_exclude <- unique(c(states_to_exclude, exclude_states))
+  }
+  
+  # For our specific requirement: Continental US + Alaska but no Hawaii
+  if (include_alaska && "02" %in% states_to_exclude) {
+    # Remove Alaska from exclusion list
+    states_to_exclude <- setdiff(states_to_exclude, "02")
+  }
+  
+  # Always make sure Hawaii is excluded if that's what was requested
+  if (!"15" %in% states_to_exclude && !is.null(exclude_states) && "15" %in% exclude_states) {
+    states_to_exclude <- c(states_to_exclude, "15")
+  }
+  
+  # Apply the filtering
+  if (length(states_to_exclude) > 0) {
+    filtered_counties <- !state_fips %in% states_to_exclude
+    county_sf <- county_sf[filtered_counties, ]
+    
+    # Log which states are included/excluded
+    excluded_state_names <- c(
+      "02" = "Alaska", "15" = "Hawaii", "72" = "Puerto Rico", 
+      "60" = "American Samoa", "66" = "Guam", "69" = "Northern Mariana Islands", 
+      "78" = "Virgin Islands"
+    )
+    
+    excluded_names <- excluded_state_names[states_to_exclude]
+    excluded_str <- paste(names(excluded_names), " (", excluded_names, ")", sep="", collapse=", ")
+    
+    cat("Filtered to", nrow(county_sf), "counties, excluding:", excluded_str, "\n")
+    
+    # Special note for Alaska inclusion
+    if (include_alaska && !"02" %in% states_to_exclude) {
+      cat("Alaska is included in the maps as requested\n")
+    }
   }
   
   # Step 5: Get variable metadata for better map titles and color schemes
@@ -781,6 +829,9 @@ generate_conus_maps <- function(output_dir = "output/maps",
                           non_na_count, total_count, coverage_pct),
           caption = sprintf("Source: US Social Determinants of Health Dataset %d", year)
         ) +
+        # Special projection handling for including Alaska
+        coord_sf(crs = if(include_alaska && !"02" %in% states_to_exclude) 
+                       st_crs("ESRI:102003") else NULL) + # Use Albers projection when Alaska is included
         theme_minimal() +
         theme(
           plot.title = element_text(size = 14, face = "bold"),
@@ -804,6 +855,9 @@ generate_conus_maps <- function(output_dir = "output/maps",
                           non_na_count, total_count, coverage_pct),
           caption = sprintf("Source: US Social Determinants of Health Dataset %d", year)
         ) +
+        # Special projection handling for including Alaska
+        coord_sf(crs = if(include_alaska && !"02" %in% states_to_exclude) 
+                       st_crs("ESRI:102003") else NULL) + # Use Albers projection when Alaska is included
         theme_minimal() +
         theme(
           plot.title = element_text(size = 14, face = "bold"),
@@ -1114,6 +1168,9 @@ generate_conus_maps <- function(output_dir = "output/maps",
         geom_sf(aes(fill = .data[[variable]]), color = NA) +
         fill_scale +
         labs(title = var_description) +
+        # Special projection handling for including Alaska
+        coord_sf(crs = if(include_alaska && !"02" %in% states_to_exclude) 
+                       st_crs("ESRI:102003") else NULL) + # Use Albers projection when Alaska is included
         theme_void() +
         theme(
           plot.title = element_text(size = 8),
@@ -1332,6 +1389,9 @@ generate_conus_maps <- function(output_dir = "output/maps",
         geom_sf(aes(fill = .data[[variable]]), color = NA) +
         fill_scale +
         labs(title = as.character(year)) +
+        # Special projection handling for including Alaska
+        coord_sf(crs = if(include_alaska && !"02" %in% states_to_exclude) 
+                       st_crs("ESRI:102003") else NULL) + # Use Albers projection when Alaska is included
         theme_void() +
         theme(
           plot.title = element_text(size = 10),
@@ -1385,7 +1445,20 @@ generate_conus_maps <- function(output_dir = "output/maps",
   readme_content <- paste0(readme_content, "## Map Coverage\n\n")
   readme_content <- paste0(readme_content, sprintf("- **Time Period**: %d to %d\n", min(available_years), max(available_years)))
   readme_content <- paste0(readme_content, sprintf("- **Variables**: %d variables mapped across various domains\n", length(data_cols)))
-  readme_content <- paste0(readme_content, sprintf("- **Geography**: Maps show the Continental United States (CONUS), excluding Alaska, Hawaii, and territories\n\n"))
+  # Generate the geography description based on actual settings
+  geography_desc <- if(include_alaska && !"02" %in% states_to_exclude) {
+    if("15" %in% states_to_exclude) {
+      "Maps show the Continental United States (CONUS) with Alaska, excluding Hawaii and territories"
+    } else {
+      "Maps show the Continental United States (CONUS) with Alaska and Hawaii"
+    }
+  } else if(conus_only) {
+    "Maps show the Continental United States (CONUS), excluding Alaska, Hawaii, and territories"
+  } else {
+    "Maps show the United States including territories"
+  }
+  
+  readme_content <- paste0(readme_content, sprintf("- **Geography**: %s\n\n", geography_desc))
   
   readme_content <- paste0(readme_content, "## Variable Domains\n\n")
   

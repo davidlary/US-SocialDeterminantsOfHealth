@@ -12,7 +12,7 @@ This directory contains maps for the US Social Determinants of Health dataset.
 
 - **Time Period**: 1970 to 2022
 - **Variables**: 284 variables mapped across various domains
-- **Geography**: Maps show the entire United States, including Alaska, Hawaii, and territories
+- **Geography**: Maps show the Continental United States (CONUS) with Alaska, excluding Hawaii and territories
 
 ## Variable Domains
 

@@ -1,48 +1,27 @@
-# R specific ignores
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
-
 # Large data files
-data/cdc_places/*.csv
-data/census_historical/*.txt
-data/crime/*.csv
-data/economic/*.csv
-data/education/*.csv
-data/epa/tri/*.csv
-data/epa/*.csv
-data/epa/*.zip
-data/healthcare/*.csv
-data/housing/*.csv
-data/ihme/CSV/*.CSV
-data/ihme/Docs/*.PDF
-data/ihme/Docs/*.XLSX
-data/nhgis/*.CSV
-data/seer/*.gz
-data/shapefiles/*.rds
-data/shapefiles/*.txt
-data/social_cohesion/*.csv
-data/transportation/*.csv
-data/usda_food_atlas/*.csv
-data/usda_food_atlas/*.xls
-data/built_environment/*.csv
-
-# Preserve smaller index and metadata files
-!data/shapefiles/shapefile_index.csv
-
-# Database files
 *.duckdb
 *.duckdb.wal
+*.csv.gz
+*.csv.zip
+*.rds
+*.parquet
+*.feather
 
-# Cache and generated files
-data/cache/*
-output/maps/*
-logs/*.log
-
-# OS specific
+# Temporary files
+*.log
+*.png
+Rplots.pdf
+.RData
+.Rhistory
+__pycache__/
+*.py[cod]
+*$py.class
 .DS_Store
-Thumbs.db
+backup_*/*
 
-# Allow .gitkeep files in otherwise empty directories
-!**/.gitkeep
+# Keep empty directories
+\!**/.gitkeep
+
+# Don't ignore specific README files
+\!output/maps/README.md
+\!*/README.md

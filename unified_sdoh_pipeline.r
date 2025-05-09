@@ -1044,6 +1044,64 @@ elapsed <- difftime(end_time, start_time, units = "mins")
 
 log_message("\n=================================================", 
            level = "INFO", log_file = log_file)
+
+# ---- Step: Generate CONUS Maps ----
+log_message("STEP: GENERATING CONUS MAPS FOR ALL VARIABLES", 
+            level = "INFO", show_console = TRUE)
+
+# Source the map generation script
+source(file.path(root_dir, "generate_conus_maps.r"))
+
+# Generate maps for all variables and years
+map_result <- tryCatch({
+  generate_conus_maps(
+    output_dir = file.path(output_dir, "maps"),
+    db_path = file.path(output_dir, "us_county_sdoh_data.duckdb"),
+    conus_only = TRUE,
+    parallel = FALSE
+  )
+  TRUE
+}, error = function(e) {
+  log_message(paste("ERROR: Map generation failed:", conditionMessage(e)), 
+              level = "ERROR", show_console = TRUE)
+  FALSE
+})
+
+if (map_result) {
+  log_message("Maps successfully generated", level = "INFO", show_console = TRUE)
+} else {
+  log_message("Map generation encountered errors", level = "WARN", show_console = TRUE)
+}
+
+
+# ---- Step: Generate CONUS Maps ----
+log_message("STEP: GENERATING CONUS MAPS FOR ALL VARIABLES", 
+            level = "INFO", show_console = TRUE)
+
+# Source the map generation script
+source(file.path(root_dir, "generate_conus_maps.r"))
+
+# Generate maps for all variables and years
+map_result <- tryCatch({
+  generate_conus_maps(
+    output_dir = file.path(output_dir, "maps"),
+    db_path = file.path(output_dir, "us_county_sdoh_data.duckdb"),
+    conus_only = TRUE,
+    parallel = FALSE
+  )
+  TRUE
+}, error = function(e) {
+  log_message(paste("ERROR: Map generation failed:", conditionMessage(e)), 
+              level = "ERROR", show_console = TRUE)
+  FALSE
+})
+
+if (map_result) {
+  log_message("Maps successfully generated", level = "INFO", show_console = TRUE)
+} else {
+  log_message("Map generation encountered errors", level = "WARN", show_console = TRUE)
+}
+
 log_message("UNIFIED SDOH PIPELINE COMPLETED", level = "INFO", log_file = log_file)
 log_message(paste("Execution time:", round(elapsed, 2), "minutes"), 
            level = "INFO", log_file = log_file)

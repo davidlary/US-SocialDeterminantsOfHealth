@@ -35,13 +35,14 @@ The pipeline aggregates data from 25+ authoritative sources:
 - **Trust for Public Land**: ParkScore data
 - **Many other specialized sources**
 
-## Quick Start with Sample Data
+## Quick Start: Complete Database with Maps
 
-For new users who want to quickly test the pipeline without setting up API credentials or downloading large datasets:
+To create a comprehensive database with all 255+ variables from 1970 to present and generate maps for all variables:
 
-1. **Generate Sample Data**:
+1. **Clone the Repository**:
    ```bash
-   Rscript R/utilities/create_sample_data.r
+   git clone https://github.com/davidlary/US-SocialDeterminantsOfHealth.git
+   cd US-SocialDeterminantsOfHealth
    ```
 
 2. **Install Essential Packages** (automatically handles missing packages):
@@ -49,12 +50,23 @@ For new users who want to quickly test the pipeline without setting up API crede
    Rscript R/install_missing_packages.r
    ```
 
-3. **Run the Pipeline with Sample Data**:
+3. **Run the Comprehensive Database Builder**:
    ```bash
-   Rscript R/unified_sdoh_pipeline.r --use-sample-data
+   chmod +x R/run_full_database_rebuild_and_verification.sh
+   ./R/run_full_database_rebuild_and_verification.sh
    ```
 
-This will create a minimal working dataset that demonstrates the pipeline's functionality without requiring external data sources or API keys.
+This single script will:
+- Create a database with all 255+ variables from 1970-2022
+- Include all U.S. counties (3,234)
+- Generate maps for all variables and years
+- Ensure traffic safety variables are properly integrated
+- Implement temporal interpolation to fill gaps between data points
+
+For a quick test with sample data instead of the full implementation:
+```bash
+Rscript R/unified_sdoh_pipeline.r --use-sample-data
+```
 
 ## System Requirements
 
