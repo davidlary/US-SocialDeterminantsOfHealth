@@ -68,6 +68,28 @@ Some data files in this directory are quite large. To improve performance:
 3. Parallel processing is implemented to speed up data loading and transformation
 4. Some very large original files are excluded from the Git repository (see .gitignore)
 
+### Using Network Storage for Data Files
+
+For extremely large datasets, you can configure the pipeline to store data files on network storage or external drives:
+
+1. Edit the `config.yaml` file in the main directory
+2. Configure the `network_paths` section to point to external storage locations
+3. Keep the code in the main repository, but store data files elsewhere
+
+Example configuration:
+```yaml
+# Code stays in the repository
+directories:
+  root_dir: "/path/to/code/repository/R"
+  
+# Data files on network storage
+network_paths:
+  data_dir: "/Volumes/ExternalDrive/SDOH/data"
+  output_dir: "/Volumes/ExternalDrive/SDOH/output"
+```
+
+For complete details, see the [Configuration Guide](../docs/CONFIG_GUIDE.md)
+
 ## Adding New Data Sources
 
 When adding new data sources:

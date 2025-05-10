@@ -1,5 +1,5 @@
-year,cache_file,num_counties,has_geometry,download_date
-1990,data/shapefiles/counties_1990.rds,3141,TRUE,2025-04-12T08:10:21Z
-2000,data/shapefiles/counties_2000.rds,3219,TRUE,2025-04-12T08:10:47Z
-2010,data/shapefiles/counties_2010.rds,3221,TRUE,2025-04-12T08:10:51Z
-2020,data/shapefiles/counties_2020.rds,3234,TRUE,2025-04-12T08:10:52Z
+"year","cache_file","num_counties","has_geometry","download_date","downloaded"
+1990,"data/shapefiles/counties_1990.rds",3141,TRUE,"2025-04-12T08:10:21Z",NA
+2000,"data/shapefiles/counties_2000.rds",3219,TRUE,"2025-04-12T08:10:47Z",NA
+2010,"data/shapefiles/counties_2010.rds",3221,TRUE,"2025-04-12T08:10:51Z",NA
+2020,"data/shapefiles/counties_2020.rds",3234,TRUE,"2025-04-12T08:10:52Z",TRUE

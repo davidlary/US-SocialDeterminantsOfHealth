@@ -1,238 +1,414 @@
-# Data Dictionary for Social Determinants of Health Dataset
+# US County Social Determinants of Health Data Dictionary
 
-This documentation provides comprehensive details about all data sources used in the Social Determinants of Health pipeline. Each table lists the variables available in a specific domain, their source, and time range.
-
-## NHGIS and Census Data Sources
-
-For historical continuity, this dataset uses IPUMS NHGIS (National Historical Geographic Information System) as the primary data source for years 1970-present. NHGIS provides harmonized versions of:
-
-- **Decennial Census** (1970, 1980, 1990, 2000, 2010, 2020)
-- **American Community Survey (ACS)** (2005-present, 5-year estimates)
-- **Population Estimates Program** (intercensal years)
-
-The following core variables are sourced from NHGIS for historical years (1970-1999):
-
-| Variable Name | Description | Source | Years Available |
-|---------------|-------------|--------|-----------------|
-| total_population | Total population | NHGIS (Census) | 1970-2020 |
-| white_population | White population | NHGIS (Census) | 1970-2020 |
-| black_population | Black population | NHGIS (Census) | 1970-2020 |
-| hispanic_population | Hispanic/Latino population | NHGIS (Census) | 1970-2020 |
-| male_population | Male population | NHGIS (Census) | 1970-2020 |
-| female_population | Female population | NHGIS (Census) | 1970-2020 |
-| population_under_18 | Population under 18 years | NHGIS (Census) | 1970-2020 |
-| population_65_over | Population 65 years and over | NHGIS (Census) | 1970-2020 |
-| median_household_income | Median household income | NHGIS (Census/ACS) | 1970-2020 |
-| poverty_rate | Poverty rate | NHGIS (Census/ACS) | 1970-2020 |
-| unemployment_rate | Unemployment rate | NHGIS (Census/ACS) | 1970-2020 |
-| less_than_hs_education | Less than high school education | NHGIS (Census/ACS) | 1970-2020 |
-| bachelor_degree_or_higher | Bachelor's degree or higher | NHGIS (Census/ACS) | 1970-2020 |
-| median_home_value | Median home value | NHGIS (Census/ACS) | 1970-2020 |
-| homeownership_rate | Homeownership rate | NHGIS (Census/ACS) | 1970-2020 |
-| housing_cost_burden | Housing cost burden | NHGIS (Census/ACS) | 1970-2020 |
-
-Modern variables from more recent years (2000-present) are primarily sourced from the American Community Survey through both direct API access and NHGIS for consistency.
+This dataset contains 255 county-level variables across multiple domains related to social determinants of health.
 
 ## Summary of Variables by Domain
 
-| Domain | Number of Variables | Primary Data Sources |
-|--------|---------------------|--------------------|
-| Built Environment | 10 | EPA Smart Location Database, Trust for Public Land ParkScore |
-| Crime & Safety | 5 | FBI Uniform Crime Reports, Bureau of Justice Statistics |
-| Economic Factors | 11 | Opportunity Insights, USDA Economic Research Service, ACS |
-| Educational Resources & Quality | 8 | NCES, Stanford Education Data Archive |
-| Environmental Health | 15 | EPA Air Quality System, CDC Environmental Public Health Tracking |
-| Food Environment & Access | 15 | USDA Food Environment Atlas, Feeding America |
-| Healthcare Access | 10 | HRSA Area Health Resources Files, CMS |
-| Housing | 11 | HUD CHAS, Eviction Lab, Federal Reserve HMDA |
-| Social Cohesion & Capital | 6 | County Health Rankings, MIT Election Data |
-| Traffic Safety | 10 | NHTSA FARS, CDC WONDER |
-| Transportation | 7 | National Transit Database, All Transit Database |
-| **Total** | **108** | |
+| Domain | Number of Variables |
+|--------|---------------------|
+| Health Outcomes | 46 |
+| Housing | 24 |
+| Economic | 23 |
+| Transportation | 17 |
+| Environmental Health | 16 |
+| Race/Ethnicity | 16 |
+| Food Environment & Access | 15 |
+| Education | 13 |
+| Traffic Safety | 12 |
+| Economic Factors | 11 |
+| Built Environment | 10 |
+| Healthcare Access | 9 |
+| Educational Resources & Quality | 7 |
+| Healthcare | 7 |
+| Demographic | 6 |
+| Social Cohesion & Capital | 6 |
+| Crime & Safety | 5 |
+| Health Behaviors | 5 |
+| Social | 5 |
+| Environmental | 2 |
+| **Total** | **255** |
 
-## Crime & Safety Data
+## Variables by Domain
 
-The pipeline reads crime data from the following sources:
+### Built Environment
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| violent_crime_rate | Violent crimes per 100,000 population | FBI Uniform Crime Reports | 2000-2021 | count/100k |
-| property_crime_rate | Property crimes per 100,000 population | FBI Uniform Crime Reports | 2000-2021 | count/100k |
-| homicide_rate | Homicides per 100,000 population | FBI Uniform Crime Reports | 2000-2021 | count/100k |
-| jail_incarceration_rate | County jail inmates per 100,000 population | Bureau of Justice Statistics | 2000-2020 | count/100k |
-| pretrial_detention_rate | Pretrial detainees per 100,000 population | Bureau of Justice Statistics | 2000-2020 | count/100k |
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `employment_access_index` | Access to employment centers | numeric_index | 2010 - 2021 | EPA Smart Location Database |
+| `housing_density` | Housing units per acre of developed land | numeric_density | 2010 - 2021 | EPA Smart Location Database |
+| `land_use_diversity` | Mix of land uses (entropy index) | numeric_index | 2010 - 2021 | EPA Smart Location Database |
+| `park_access_pct` | Percentage of residents living within 10-minute walk of a park | numeric_percent | 2012 - 2022 | Trust for Public Land ParkScore |
+| `park_acres_per_1000` | Park acres per 1,000 residents | numeric_rate | 2012 - 2022 | Trust for Public Land ParkScore |
+| `park_spending_per_capita` | Park system spending per resident | numeric_money | 2012 - 2022 | Trust for Public Land ParkScore |
+| `playgrounds_per_10000` | Playgrounds per 10,000 residents | numeric_rate | 2012 - 2022 | Trust for Public Land ParkScore |
+| `street_intersection_density` | Number of intersections per square mile | numeric_density | 2010 - 2021 | EPA Smart Location Database |
+| `transit_service_density` | Transit routes and stops per square mile | numeric_density | 2010 - 2021 | EPA Smart Location Database |
+| `walkability_index` | County-level walkability score | numeric_index | 2010 - 2021 | EPA Smart Location Database |
 
-### FBI Uniform Crime Reports (UCR)
-The FBI's Uniform Crime Reports provide standardized offense statistics from approximately 18,000 law enforcement agencies nationwide. The pipeline retrieves county-level crime rates for violent crime, property crime, and homicide, normalized per 100,000 population.
 
-### Bureau of Justice Statistics (BJS)
-The Bureau of Justice Statistics provides county-level jail incarceration data, including general jail population rates and pretrial detention rates (which measures the number of people held in jail before being convicted of a crime).
+### Crime & Safety
 
-## Built Environment Data
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `homicide_rate` | Homicides per 100,000 population | numeric_rate | 2000 - 2021 | FBI Uniform Crime Reports |
+| `jail_incarceration_rate` | County jail inmates per 100,000 population | numeric_rate | 2000 - 2020 | Bureau of Justice Statistics |
+| `pretrial_detention_rate` | Pretrial detainees per 100,000 population | numeric_rate | 2000 - 2020 | Bureau of Justice Statistics |
+| `property_crime_rate` | Property crimes per 100,000 population | numeric_rate | 2000 - 2021 | FBI Uniform Crime Reports |
+| `violent_crime_rate` | Violent crimes per 100,000 population | numeric_rate | 2000 - 2021 | FBI Uniform Crime Reports |
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| employment_access_index | Access to employment centers | EPA Smart Location Database | 2010-2021 | index |
-| housing_density | Housing units per acre of developed land | EPA Smart Location Database | 2010-2021 | units/acre |
-| land_use_diversity | Mix of land uses (entropy index) | EPA Smart Location Database | 2010-2021 | index |
-| park_access_pct | Percentage of residents living within 10-minute walk of a park | Trust for Public Land ParkScore | 2012-2022 | percent |
-| park_acres_per_1000 | Park acres per 1,000 residents | Trust for Public Land ParkScore | 2012-2022 | acres/1000 |
-| park_spending_per_capita | Park system spending per resident | Trust for Public Land ParkScore | 2012-2022 | dollars |
-| playgrounds_per_10000 | Playgrounds per 10,000 residents | Trust for Public Land ParkScore | 2012-2022 | count/10000 |
-| street_intersection_density | Number of intersections per square mile | EPA Smart Location Database | 2010-2021 | count/sq mile |
-| transit_service_density | Transit routes and stops per square mile | EPA Smart Location Database | 2010-2021 | count/sq mile |
-| walkability_index | County-level walkability score | EPA Smart Location Database | 2010-2021 | index |
 
-## Economic Factors Data
+### Demographic
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| absolute_upward_mobility | Expected income rank for children from low-income families | Opportunity Insights | 2000-2018 | percentile |
-| economic_distress_index | Composite index of economic distress | Appalachian Regional Commission | 2000-2023 | index |
-| economic_typology | County economic typology | USDA Economic Research Service | 2000-2023 | category |
-| employment_volatility_index | Index of employment stability/volatility | USDA Economic Research Service | 2000-2023 | index |
-| income_inequality_ratio | Ratio of income at 80th percentile to income at 20th percentile | American Community Survey | 2010-2023 | ratio |
-| income_mobility_index | Measure of intergenerational economic mobility | Opportunity Insights | 2000-2018 | index |
-| job_density_index | Number of jobs within typical commute distance | Opportunity Insights | 2000-2018 | index |
-| job_growth_rate | Annual job growth rate | Bureau of Labor Statistics | 2000-2023 | percent |
-| mean_commute_distance | Average commute distance | Opportunity Insights | 2000-2018 | miles |
-| persistent_child_poverty_county | Flag for counties with persistent child poverty | USDA Economic Research Service | 2000-2023 | binary |
-| persistent_poverty_county | Flag for counties with persistent poverty | USDA Economic Research Service | 2000-2023 | binary |
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `female_population` | Female population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `male_population` | Male population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `median_age` | Median age of population | numeric_years | 2000 - 2023 | US Census Bureau |
+| `population_over_65` | Population 65 years and older | numeric_count | 2000 - 2023 | US Census Bureau |
+| `population_under_18` | Population under 18 years old | numeric_count | 2000 - 2023 | US Census Bureau |
+| `total_population` | Total population | numeric_count | 2000 - 2023 | US Census Bureau |
 
-## Educational Resources & Quality Data
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| educational_opportunity_index | Measure of educational opportunity | Stanford Education Data Archive | 2009-2018 | index |
-| high_school_graduation_rate | Four-year high school graduation rate | National Center for Education Statistics | 2000-2022 | percent |
-| math_achievement_gap | Achievement gap in math scores by race/ethnicity | Stanford Education Data Archive | 2009-2018 | z-score |
-| per_pupil_expenditure | Per-pupil expenditure in public schools | National Center for Education Statistics | 2000-2022 | dollars |
-| preschool_enrollment_rate | Percentage of 3-4 year-olds enrolled in preschool | National Center for Education Statistics | 2000-2022 | percent |
-| reading_achievement_gap | Achievement gap in reading scores by race/ethnicity | Stanford Education Data Archive | 2009-2018 | z-score |
-| school_funding_equity | Ratio of funding in high-poverty vs. low-poverty districts | National Center for Education Statistics | 2000-2022 | ratio |
-| student_teacher_ratio | Student-to-teacher ratio in public schools | National Center for Education Statistics | 2000-2022 | ratio |
+### Economic
 
-## Environmental Health Data
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `child_poverty_rate` | Percentage of children below poverty level | numeric_percent | 2010 - 2023 | American Community Survey |
+| `gini_index` | Gini index of income inequality | numeric_index | 2010 - 2023 | American Community Survey |
+| `income_100k_150k` | Households with income $100,000 to $149,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_10k_15k` | Households with income $10,000 to $14,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_150k_200k` | Households with income $150,000 to $199,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_15k_25k` | Households with income $15,000 to $24,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_200k_plus` | Households with income $200,000 or more | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_25k_35k` | Households with income $25,000 to $34,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_35k_50k` | Households with income $35,000 to $49,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_50k_75k` | Households with income $50,000 to $74,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_75k_100k` | Households with income $75,000 to $99,999 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `income_less_10k` | Households with income less than $10,000 | numeric_percent | 2010 - 2023 | American Community Survey |
+| `labor_force_participation` | Labor force participation rate | numeric_percent | 2010 - 2023 | American Community Survey |
+| `mean_household_income` | Mean household income | numeric_money | 2010 - 2023 | American Community Survey |
+| `median_earnings` | Median earnings for workers | numeric_money | 2010 - 2023 | American Community Survey |
+| `median_female_earnings` | Median earnings for female workers | numeric_money | 2010 - 2023 | American Community Survey |
+| `median_household_income` | Median household income | numeric_money | 2010 - 2023 | American Community Survey |
+| `median_male_earnings` | Median earnings for male workers | numeric_money | 2010 - 2023 | American Community Survey |
+| `per_capita_income` | Per capita income | numeric_money | 2010 - 2023 | American Community Survey |
+| `poverty_rate` | Percentage of population below poverty level | numeric_percent | 2010 - 2023 | American Community Survey |
+| `senior_poverty_rate` | Percentage of seniors (65+) below poverty level | numeric_percent | 2010 - 2023 | American Community Survey |
+| `snap_benefits` | Households receiving SNAP/Food Stamps | numeric_percent | 2010 - 2023 | American Community Survey |
+| `unemployment_rate` | Unemployment rate | numeric_percent | 2010 - 2023 | American Community Survey |
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| air_quality_days_unhealthy | Number of days with unhealthy air quality | EPA Air Quality System | 2000-2023 | days |
-| air_toxics_cancer_risk | Air toxics cancer risk | EPA Air Quality System | 2000-2023 | per million |
-| diesel_pm_concentration | Diesel particulate matter concentration | EPA Air Quality System | 2000-2023 | μg/m³ |
-| drought_severity_index | Average drought severity index | CDC Environmental Public Health Tracking | 2002-2022 | index |
-| extreme_heat_days | Annual number of extreme heat days | CDC Environmental Public Health Tracking | 2002-2022 | days |
-| extreme_precipitation_events | Annual number of extreme precipitation events | CDC Environmental Public Health Tracking | 2002-2022 | count |
-| lead_exposure_risk_index | Index of lead exposure risk | CDC Environmental Public Health Tracking | 2002-2022 | index |
-| lead_paint_indicator | Percentage of housing units built pre-1960 | EPA EJSCREEN | 2016-2023 | percent |
-| ozone_days_exceeding | Days exceeding ozone standards | EPA Air Quality System | 2000-2023 | days |
-| pm25_annual_mean | Annual mean PM2.5 concentration | EPA Air Quality System | 2000-2023 | μg/m³ |
-| proximity_to_hazardous_waste | Count of hazardous waste facilities within 5km | EPA EJSCREEN | 2016-2023 | count |
-| proximity_to_npl_sites | Proximity to National Priorities List (Superfund) sites | EPA EJSCREEN | 2016-2023 | index |
-| public_water_violations | Number of public water system violations | CDC Environmental Public Health Tracking | 2002-2022 | count |
-| respiratory_hazard_index | Respiratory hazard index from air pollutants | EPA Air Quality System | 2000-2023 | index |
-| traffic_proximity | Count of vehicles at major roads within 500m | EPA EJSCREEN | 2016-2023 | count |
-| wastewater_discharge | Toxicity-weighted concentrations in stream reach | EPA EJSCREEN | 2016-2023 | concentration |
 
-## Food Environment & Access Data
+### Economic Factors
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| child_food_insecurity_rate | Percentage of children experiencing food insecurity | Feeding America Map the Meal Gap | 2009-2022 | percent |
-| children_low_access_pct | Percentage of children with low access to a grocery store | USDA Food Environment Atlas | 2010-2022 | percent |
-| convenience_stores_per_1000 | Number of convenience stores per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| farmers_markets_per_1000 | Farmers markets per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| fast_food_restaurants_per_1000 | Fast food restaurants per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| food_insecurity_cost_per_person | Average cost per person to meet food needs | Feeding America Map the Meal Gap | 2009-2022 | dollars |
-| food_insecurity_rate | Percentage of overall population experiencing food insecurity | Feeding America Map the Meal Gap | 2009-2022 | percent |
-| full_service_restaurants_per_1000 | Full-service restaurants per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| grocery_stores_per_1000 | Number of supermarkets and grocery stores per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| low_income_low_access_pct | Percentage of population that is low income and has low access to a grocery store | USDA Food Environment Atlas | 2010-2022 | percent |
-| seniors_low_access_pct | Percentage of seniors with low access to a grocery store | USDA Food Environment Atlas | 2010-2022 | percent |
-| snap_authorized_stores_per_1000 | SNAP-authorized retailers per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| snap_benefits_redemption_per_capita | SNAP benefits redemption per capita | USDA Food Environment Atlas | 2010-2022 | dollars |
-| supercenters_per_1000 | Number of supercenter and club stores per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
-| wic_authorized_stores_per_1000 | WIC-authorized stores per 1,000 population | USDA Food Environment Atlas | 2010-2022 | count/1000 |
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `absolute_upward_mobility` | Expected income rank for children from low-income families | numeric_index | 2000 - 2018 | Opportunity Insights |
+| `economic_distress_index` | Composite index of economic distress | numeric_index | 2000 - 2023 | Appalachian Regional Commission |
+| `economic_typology` | County economic typology | categorical | 2000 - 2023 | USDA Economic Research Service |
+| `employment_volatility_index` | Index of employment stability/volatility | numeric_index | 2000 - 2023 | USDA Economic Research Service |
+| `income_inequality_ratio` | Ratio of income at 80th percentile to income at 20th percentile | numeric_ratio | 2010 - 2023 | American Community Survey |
+| `income_mobility_index` | Measure of intergenerational economic mobility | numeric_index | 2000 - 2018 | Opportunity Insights |
+| `job_density_index` | Number of jobs within typical commute distance | numeric_index | 2000 - 2018 | Opportunity Insights |
+| `job_growth_rate` | Annual job growth rate | numeric_percent | 2000 - 2023 | Bureau of Labor Statistics |
+| `mean_commute_distance` | Average commute distance | numeric_distance | 2000 - 2018 | Opportunity Insights |
+| `persistent_child_poverty_county` | Flag for counties with persistent child poverty | binary | 2000 - 2023 | USDA Economic Research Service |
+| `persistent_poverty_county` | Flag for counties with persistent poverty | binary | 2000 - 2023 | USDA Economic Research Service |
 
-## Healthcare Access Data
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| ambulatory_care_sensitive_conditions | Rate of hospitalization for ambulatory care sensitive conditions | CMS Geographic Variation Public Use File | 2007-2021 | rate |
-| dentists_per_100k | Dentists per 100,000 population | HRSA Area Health Resources Files | 2000-2023 | count/100k |
-| fqhc_access_pct | Percentage of population with access to Federally Qualified Health Centers | HRSA Area Health Resources Files | 2000-2023 | percent |
-| hospital_beds_per_1000 | Hospital beds per 1,000 population | HRSA Area Health Resources Files | 2000-2023 | count/1000 |
-| medicare_spending_per_beneficiary | Medicare spending per beneficiary | CMS Geographic Variation Public Use File | 2007-2021 | dollars |
-| mental_health_providers_per_100k | Mental health providers per 100,000 population | HRSA Area Health Resources Files | 2000-2023 | count/100k |
-| pharmacies_per_100k | Pharmacies per 100,000 population | HRSA Area Health Resources Files | 2000-2023 | count/100k |
-| preventable_hospital_stays | Preventable hospital stays per 100,000 Medicare enrollees | HRSA Area Health Resources Files | 2000-2023 | count/100k |
-| preventive_services_pct | Percentage of Medicare beneficiaries receiving preventive services | CMS Geographic Variation Public Use File | 2007-2021 | percent |
-| primary_care_physicians_per_100k | Primary care physicians per 100,000 population | HRSA Area Health Resources Files | 2000-2023 | count/100k |
+### Education
 
-## Housing Data
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `bachelors_or_higher` | Population with bachelor's degree or higher | numeric_count | 2010 - 2023 | American Community Survey |
+| `bachelors_or_higher_pct` | Percentage with bachelor's degree or higher | numeric_percent | 2010 - 2023 | American Community Survey |
+| `enrolled_in_college` | Population enrolled in college or graduate school | numeric_count | 2010 - 2023 | American Community Survey |
+| `enrolled_in_college_pct` | Percentage enrolled in college or graduate school | numeric_percent | 2010 - 2023 | American Community Survey |
+| `graduate_degree` | Population with graduate or professional degree | numeric_count | 2010 - 2023 | American Community Survey |
+| `graduate_degree_pct` | Percentage with graduate or professional degree | numeric_percent | 2010 - 2023 | American Community Survey |
+| `high_school_graduation_rate` | High school graduation rate | numeric_percent | 2010 - 2023 | American Community Survey |
+| `high_school_only` | Population with high school diploma only | numeric_count | 2010 - 2023 | American Community Survey |
+| `high_school_only_pct` | Percentage with high school diploma only | numeric_percent | 2010 - 2023 | American Community Survey |
+| `less_than_high_school` | Population with less than high school education | numeric_count | 2010 - 2023 | American Community Survey |
+| `less_than_high_school_pct` | Percentage with less than high school education | numeric_percent | 2010 - 2023 | American Community Survey |
+| `some_college` | Population with some college or associate's degree | numeric_count | 2010 - 2023 | American Community Survey |
+| `some_college_pct` | Percentage with some college or associate's degree | numeric_percent | 2010 - 2023 | American Community Survey |
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| eviction_filing_rate | Number of eviction filings per 100 renter homes | Eviction Lab | 2000-2018 | rate |
-| eviction_rate | Number of evictions per 100 renter homes | Eviction Lab | 2000-2018 | rate |
-| foreclosure_rate | Foreclosures per 1,000 housing units | Federal Reserve HMDA | 2007-2023 | rate |
-| high_cost_loans_pct | Percentage of loans that are high-cost | Federal Reserve HMDA | 2007-2023 | percent |
-| housing_problems_pct | Percentage of households with at least one housing problem | HUD CHAS | 2006-2020 | percent |
-| low_income_renters_affordable_units_ratio | Ratio of affordable units to low-income renters | HUD CHAS | 2006-2020 | ratio |
-| mortgage_denial_rate | Percentage of mortgage applications denied | Federal Reserve HMDA | 2007-2023 | percent |
-| overcrowded_housing_pct | Percentage of housing units with >1 person per room | HUD CHAS | 2006-2020 | percent |
-| rent_burden_pct | Percentage of income spent on rent (median) | Eviction Lab | 2000-2018 | percent |
-| severely_cost_burdened_owners_pct | Percentage of owner households spending >50% of income on housing | HUD CHAS | 2006-2020 | percent |
-| severely_cost_burdened_renters_pct | Percentage of renter households spending >50% of income on housing | HUD CHAS | 2006-2020 | percent |
 
-## Social Cohesion & Capital Data
+### Educational Resources & Quality
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| nonprofit_organizations_per_10k | Nonprofit organizations per 10,000 population | County Health Rankings | 2014-2023 | count/10k |
-| political_competition_index | Index measuring political competition | MIT Election Data and Science Lab | 2000-2022 | index |
-| religious_congregation_rate | Religious congregations per 10,000 population | County Health Rankings | 2014-2023 | count/10k |
-| social_association_rate | Social associations per 10,000 population | County Health Rankings | 2014-2023 | count/10k |
-| voter_registration_rate | Voter registration as percentage of eligible population | MIT Election Data and Science Lab | 2000-2022 | percent |
-| voter_turnout_rate | Voter turnout rate in general elections | MIT Election Data and Science Lab | 2000-2022 | percent |
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `educational_opportunity_index` | Measure of educational opportunity | numeric_index | 2009 - 2018 | Stanford Education Data Archive |
+| `math_achievement_gap` | Achievement gap in math scores by race/ethnicity | numeric_index | 2009 - 2018 | Stanford Education Data Archive |
+| `per_pupil_expenditure` | Per-pupil expenditure in public schools | numeric_money | 2000 - 2022 | National Center for Education Statistics |
+| `preschool_enrollment_rate` | Percentage of 3-4 year-olds enrolled in preschool | numeric_percent | 2000 - 2022 | National Center for Education Statistics |
+| `reading_achievement_gap` | Achievement gap in reading scores by race/ethnicity | numeric_index | 2009 - 2018 | Stanford Education Data Archive |
+| `school_funding_equity` | Ratio of funding in high-poverty vs. low-poverty districts | numeric_ratio | 2000 - 2022 | National Center for Education Statistics |
+| `student_teacher_ratio` | Student-to-teacher ratio in public schools | numeric_ratio | 2000 - 2022 | National Center for Education Statistics |
 
-## Traffic Safety Data
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| traffic_fatality_count | Total number of traffic-related deaths | NHTSA FARS/CDC WONDER | 1975-2023 | count |
-| traffic_fatality_rate_per_100k | Traffic fatality rate per 100,000 population | NHTSA FARS/CDC WONDER | 1975-2023 | count/100k |
-| traffic_injury_count | Total number of traffic-related injuries | NHTSA FARS | 1975-2023 | count |
-| traffic_injury_rate_per_100k | Traffic injury rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
-| ped_bike_fatality_count | Pedestrian and cyclist fatalities | NHTSA FARS | 1975-2023 | count |
-| ped_bike_fatality_rate_per_100k | Pedestrian and cyclist fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
-| dui_fatality_count | Alcohol-related traffic fatalities | NHTSA FARS | 1975-2023 | count |
-| dui_fatality_rate_per_100k | Alcohol-related fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
-| speeding_fatality_count | Speeding-related traffic fatalities | NHTSA FARS | 1975-2023 | count |
-| speeding_fatality_rate_per_100k | Speeding-related fatality rate per 100,000 population | NHTSA FARS | 1975-2023 | count/100k |
+### Environmental
 
-### NHTSA Fatality Analysis Reporting System (FARS)
-The National Highway Traffic Safety Administration's Fatality Analysis Reporting System (FARS) provides detailed data on all vehicle crashes in the United States that result in a fatality. The database includes information on different types of fatalities (total, pedestrian/cyclist, alcohol-related, speeding-related) at the county level.
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `air_pollution_pm25` | Fine particulate matter (PM2.5) concentration | numeric_index | 2000 - 2023 | EPA / Census Bureau |
+| `population_density` | Population per square mile | numeric_density | 2000 - 2023 | EPA / Census Bureau |
 
-### CDC WONDER
-The CDC WONDER Multiple Cause of Death database provides county-level mortality data including transportation-related deaths (classified by ICD-10 codes V01-V99). This data serves as a supplementary source for traffic fatality information.
 
-## Transportation Data
+### Environmental Health
 
-| Variable Name | Description | Source | Years Available | Units |
-|---------------|-------------|--------|-----------------|-------|
-| public_transit_trips_per_capita | Public transit trips per capita | National Transit Database | 2000-2022 | count |
-| transit_access_jobs | Number of jobs accessible by transit within 30 minutes | All Transit Database | 2012-2022 | count |
-| transit_connectivity_index | Measure of transit connectivity | All Transit Database | 2012-2022 | index |
-| transit_performance_index | Composite measure of transit performance | All Transit Database | 2012-2022 | index |
-| transportation_cost_burden_pct | Transportation costs as percentage of household income | National Household Travel Survey | 2001-2017 | percent |
-| vehicle_miles_traveled_per_capita | Annual vehicle miles traveled per capita | National Household Travel Survey | 2001-2017 | miles |
-| zero_vehicle_households_pct | Percentage of households with no vehicles | American Community Survey | 2009-2023 | percent |
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `air_quality_days_unhealthy` | Number of days with unhealthy air quality | numeric_count | 2000 - 2023 | EPA Air Quality System |
+| `air_toxics_cancer_risk` | Air toxics cancer risk | numeric_rate | 2000 - 2023 | EPA Air Quality System |
+| `diesel_pm_concentration` | Diesel particulate matter concentration | numeric_index | 2000 - 2023 | EPA Air Quality System |
+| `drought_severity_index` | Average drought severity index | numeric_index | 2002 - 2022 | CDC Environmental Public Health Tracking |
+| `extreme_heat_days` | Annual number of extreme heat days | numeric_count | 2002 - 2022 | CDC Environmental Public Health Tracking |
+| `extreme_precipitation_events` | Annual number of extreme precipitation events | numeric_count | 2002 - 2022 | CDC Environmental Public Health Tracking |
+| `lead_exposure_risk_index` | Index of lead exposure risk | numeric_index | 2002 - 2022 | CDC Environmental Public Health Tracking |
+| `lead_paint_indicator` | Percentage of housing units built pre-1960 | numeric_percent | 2016 - 2023 | EPA EJSCREEN |
+| `ozone_days_exceeding` | Days exceeding ozone standards | numeric_count | 2000 - 2023 | EPA Air Quality System |
+| `pm25_annual_mean` | Annual mean PM2.5 concentration | numeric_index | 2000 - 2023 | EPA Air Quality System |
+| `proximity_to_hazardous_waste` | Count of hazardous waste facilities within 5km | numeric_count | 2016 - 2023 | EPA EJSCREEN |
+| `proximity_to_npl_sites` | Proximity to National Priorities List (Superfund) sites | numeric_index | 2016 - 2023 | EPA EJSCREEN |
+| `public_water_violations` | Number of public water system violations | numeric_count | 2002 - 2022 | CDC Environmental Public Health Tracking |
+| `respiratory_hazard_index` | Respiratory hazard index from air pollutants | numeric_index | 2000 - 2023 | EPA Air Quality System |
+| `traffic_proximity` | Count of vehicles at major roads within 500m | numeric_count | 2016 - 2023 | EPA EJSCREEN |
+| `wastewater_discharge` | Toxicity-weighted concentrations in stream reach | numeric_index | 2016 - 2023 | EPA EJSCREEN |
 
-## Data Consistency and Quality
 
-Each variable includes metadata about its:
-- Data quality (direct, interpolated, extrapolated, simulated)
-- Data source (original source of information)
-- Data vintage (original year or time period of collection)
+### Food Environment & Access
 
-The pipeline attempts to obtain direct data from authoritative sources when available, and uses interpolation, extrapolation, or simulation (when explicitly allowed) to fill gaps in time series data.
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `child_food_insecurity_rate` | Percentage of children experiencing food insecurity | numeric_percent | 2009 - 2022 | Feeding America Map the Meal Gap |
+| `children_low_access_pct` | Percentage of children with low access to a grocery store | numeric_percent | 2010 - 2022 | USDA Food Environment Atlas |
+| `convenience_stores_per_1000` | Number of convenience stores per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `farmers_markets_per_1000` | Farmers markets per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `fast_food_restaurants_per_1000` | Fast food restaurants per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `food_insecurity_cost_per_person` | Average cost per person to meet food needs | numeric_money | 2009 - 2022 | Feeding America Map the Meal Gap |
+| `food_insecurity_rate` | Percentage of overall population experiencing food insecurity | numeric_percent | 2009 - 2022 | Feeding America Map the Meal Gap |
+| `full_service_restaurants_per_1000` | Full-service restaurants per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `grocery_stores_per_1000` | Number of supermarkets and grocery stores per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `low_income_low_access_pct` | Percentage of population that is low income and has low access to a grocery store | numeric_percent | 2010 - 2022 | USDA Food Environment Atlas |
+| `seniors_low_access_pct` | Percentage of seniors with low access to a grocery store | numeric_percent | 2010 - 2022 | USDA Food Environment Atlas |
+| `snap_authorized_stores_per_1000` | SNAP-authorized retailers per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `snap_benefits_redemption_per_capita` | SNAP benefits redemption per capita | numeric_money | 2010 - 2022 | USDA Food Environment Atlas |
+| `supercenters_per_1000` | Number of supercenter and club stores per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+| `wic_authorized_stores_per_1000` | WIC-authorized stores per 1,000 population | numeric_rate | 2010 - 2022 | USDA Food Environment Atlas |
+
+
+### Health Behaviors
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `binge_drinking_pct` | Percentage of adults reporting binge drinking | numeric_percent | 2010 - 2022 | CDC PLACES / Feeding America |
+| `food_insecurity_pct` | Percentage of population with food insecurity | numeric_percent | 2010 - 2022 | CDC PLACES / Feeding America |
+| `insufficient_sleep_pct` | Percentage of adults reporting insufficient sleep | numeric_percent | 2010 - 2022 | CDC PLACES / Feeding America |
+| `physical_inactivity_pct` | Percentage of adults reporting no leisure-time physical activity | numeric_percent | 2010 - 2022 | CDC PLACES / Feeding America |
+| `smoking_pct` | Percentage of adults who currently smoke | numeric_percent | 2010 - 2022 | CDC PLACES / Feeding America |
+
+
+### Health Outcomes
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `arthritis_pct` | Percentage of adults with arthritis | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `asthma_pct` | Percentage of adults with asthma | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `cancer_pct` | Percentage of adults with cancer (excluding skin cancer) | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `copd_pct` | Percentage of adults with COPD | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `coronary_heart_disease_pct` | Percentage of adults with coronary heart disease | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `depression_pct` | Percentage of adults with diagnosed depression | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `diabetes_pct` | Percentage of adults with diagnosed diabetes | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `heart_disease_pct` | Percentage of adults with heart disease | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `high_blood_pressure_pct` | Percentage of adults with high blood pressure | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `high_cholesterol_pct` | Percentage of adults with high cholesterol | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `infant_mortality_rate` | Infant mortality rate per 1,000 live births | numeric_rate | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `kidney_disease_pct` | Percentage of adults with kidney disease | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `le_female_lower_ci` | Lower confidence interval for female life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `le_female_upper_ci` | Upper confidence interval for female life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `le_lower_ci` | Lower confidence interval for life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `le_male_lower_ci` | Lower confidence interval for male life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `le_male_upper_ci` | Upper confidence interval for male life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `le_upper_ci` | Upper confidence interval for life expectancy | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy` | Life expectancy at birth | numeric_years | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `life_expectancy_female` | Female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_hispanic` | Hispanic female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_multirace` | Non-Hispanic multiracial female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_nhaian` | Non-Hispanic AIAN female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_nhasian` | Non-Hispanic Asian female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_nhb` | Non-Hispanic Black female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_nhpi` | Non-Hispanic Pacific Islander female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_female_nhw` | Non-Hispanic White female life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_hispanic` | Hispanic life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male` | Male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_hispanic` | Hispanic male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_multirace` | Non-Hispanic multiracial male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_nhaian` | Non-Hispanic AIAN male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_nhasian` | Non-Hispanic Asian male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_nhb` | Non-Hispanic Black male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_nhpi` | Non-Hispanic Pacific Islander male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_male_nhw` | Non-Hispanic White male life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_multirace` | Non-Hispanic multiracial life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_nhaian` | Non-Hispanic AIAN life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_nhasian` | Non-Hispanic Asian life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_nhb` | Non-Hispanic Black life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_nhpi` | Non-Hispanic Pacific Islander life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `life_expectancy_nhw` | Non-Hispanic White life expectancy at birth | numeric_years | 2000 - 2019 | IHME (Institute for Health Metrics and Evaluation) |
+| `obesity_pct` | Percentage of adults with obesity (BMI ≥ 30) | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `poor_mental_health_pct` | Percentage of adults reporting poor mental health | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `poor_physical_health_pct` | Percentage of adults reporting poor physical health | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+| `stroke_pct` | Percentage of adults who have had a stroke | numeric_percent | 2010 - 2022 | CDC PLACES / CDC WONDER |
+
+
+### Healthcare
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `annual_checkup_pct` | Percentage of adults who had an annual checkup | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+| `dental_visit_pct` | Percentage of adults who visited a dentist in the past year | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+| `medicaid_pct` | Percentage of population with Medicaid coverage | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+| `medicare_pct` | Percentage of population with Medicare coverage | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+| `no_health_insurance_pct` | Percentage of adults without any health insurance | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+| `primary_care_physicians_per_100k` | Primary care physicians per 100,000 population | numeric_rate | 2010 - 2022 | CDC PLACES / SAHIE |
+| `uninsured_pct` | Percentage of population without health insurance | numeric_percent | 2010 - 2022 | CDC PLACES / SAHIE |
+
+
+### Healthcare Access
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `ambulatory_care_sensitive_conditions` | Rate of hospitalization for ambulatory care sensitive conditions | numeric_rate | 2007 - 2021 | CMS Geographic Variation Public Use File |
+| `dentists_per_100k` | Dentists per 100,000 population | numeric_rate | 2000 - 2023 | HRSA Area Health Resources Files |
+| `fqhc_access_pct` | Percentage of population with access to Federally Qualified Health Centers | numeric_percent | 2000 - 2023 | HRSA Area Health Resources Files |
+| `hospital_beds_per_1000` | Hospital beds per 1,000 population | numeric_rate | 2000 - 2023 | HRSA Area Health Resources Files |
+| `medicare_spending_per_beneficiary` | Medicare spending per beneficiary | numeric_money | 2007 - 2021 | CMS Geographic Variation Public Use File |
+| `mental_health_providers_per_100k` | Mental health providers per 100,000 population | numeric_rate | 2000 - 2023 | HRSA Area Health Resources Files |
+| `pharmacies_per_100k` | Pharmacies per 100,000 population | numeric_rate | 2000 - 2023 | HRSA Area Health Resources Files |
+| `preventable_hospital_stays` | Preventable hospital stays per 100,000 Medicare enrollees | numeric_rate | 2000 - 2023 | HRSA Area Health Resources Files |
+| `preventive_services_pct` | Percentage of Medicare beneficiaries receiving preventive services | numeric_percent | 2007 - 2021 | CMS Geographic Variation Public Use File |
+
+
+### Housing
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `eviction_filing_rate` | Number of eviction filings per 100 renter homes | numeric_rate | 2000 - 2018 | Eviction Lab |
+| `eviction_rate` | Number of evictions per 100 renter homes | numeric_rate | 2000 - 2018 | Eviction Lab |
+| `foreclosure_rate` | Foreclosures per 1,000 housing units | numeric_rate | 2007 - 2023 | Federal Reserve HMDA |
+| `high_cost_loans_pct` | Percentage of loans that are high-cost | numeric_percent | 2007 - 2023 | Federal Reserve HMDA |
+| `homeownership_rate` | Homeownership rate | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `housing_built_after_2010` | Housing units built 2010 or later | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `housing_built_before_1940` | Housing units built before 1940 | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `housing_problems_pct` | Percentage of households with at least one housing problem | numeric_percent | 2006 - 2020 | HUD CHAS |
+| `housing_without_kitchen` | Housing units lacking complete kitchen facilities | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `housing_without_plumbing` | Housing units lacking complete plumbing facilities | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `low_income_renters_affordable_units_ratio` | Ratio of affordable units to low-income renters | numeric_ratio | 2006 - 2020 | HUD CHAS |
+| `median_home_value` | Median home value | numeric_money | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `median_rent` | Median gross rent | numeric_money | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `mortgage_denial_rate` | Percentage of mortgage applications denied | numeric_percent | 2007 - 2023 | Federal Reserve HMDA |
+| `occupied_housing_units` | Occupied housing units | numeric_count | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `overcrowded_housing_pct` | Percentage of housing units with more than 1 person per room | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `rent_burden_pct` | Percentage of household income spent on rent | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `rental_rate` | Rental rate | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `severe_housing_cost_burden` | Households with severe housing cost burden (>50% of income) | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `severe_housing_problems` | Households with at least one severe housing problem | numeric_percent | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `severely_cost_burdened_owners_pct` | Percentage of owner households spending >50% of income on housing | numeric_percent | 2006 - 2020 | HUD CHAS |
+| `severely_cost_burdened_renters_pct` | Percentage of renter households spending >50% of income on housing | numeric_percent | 2006 - 2020 | HUD CHAS |
+| `total_housing_units` | Total housing units | numeric_count | 2010 - 2023 | American Community Survey / HUD CHAS |
+| `vacant_housing_units` | Vacant housing units | numeric_count | 2010 - 2023 | American Community Survey / HUD CHAS |
+
+
+### Race/Ethnicity
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `aian_pct` | American Indian and Alaska Native alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `aian_population` | American Indian and Alaska Native alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `asian_pct` | Asian alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `asian_population` | Asian alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `black_pct` | Black or African American alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `black_population` | Black or African American alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `hispanic_pct` | Hispanic or Latino percentage (any race) | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `hispanic_population` | Hispanic or Latino population (any race) | numeric_count | 2000 - 2023 | US Census Bureau |
+| `multiracial_pct` | Two or more races percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `multiracial_population` | Two or more races population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `nhpi_pct` | Native Hawaiian and Other Pacific Islander alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `nhpi_population` | Native Hawaiian and Other Pacific Islander alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `other_race_pct` | Some other race alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `other_race_population` | Some other race alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+| `white_pct` | White alone percentage | numeric_percent | 2000 - 2023 | US Census Bureau |
+| `white_population` | White alone population | numeric_count | 2000 - 2023 | US Census Bureau |
+
+
+### Social
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `civilian_veterans` | Percentage of civilian population who are veterans | numeric_percent | 2010 - 2023 | American Community Survey |
+| `disconnected_youth` | Percentage of teens and young adults (16-24) neither working nor in school | numeric_percent | 2010 - 2023 | American Community Survey |
+| `households_with_computer` | Percentage of households with a computer | numeric_percent | 2010 - 2023 | American Community Survey |
+| `households_with_internet` | Percentage of households with broadband internet subscription | numeric_percent | 2010 - 2023 | American Community Survey |
+| `single_parent_households_pct` | Percentage of single-parent households | numeric_percent | 2010 - 2023 | American Community Survey |
+
+
+### Social Cohesion & Capital
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `nonprofit_organizations_per_10k` | Nonprofit organizations per 10,000 population | numeric_rate | 2014 - 2023 | County Health Rankings |
+| `political_competition_index` | Index measuring political competition | numeric_index | 2000 - 2022 | MIT Election Data and Science Lab |
+| `religious_congregation_rate` | Religious congregations per 10,000 population | numeric_rate | 2014 - 2023 | County Health Rankings |
+| `social_association_rate` | Social associations per 10,000 population | numeric_rate | 2014 - 2023 | County Health Rankings |
+| `voter_registration_rate` | Voter registration as percentage of eligible population | numeric_percent | 2000 - 2022 | MIT Election Data and Science Lab |
+| `voter_turnout_rate` | Voter turnout rate in general elections | numeric_percent | 2000 - 2022 | MIT Election Data and Science Lab |
+
+
+### Traffic Safety
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `alcohol_impaired_fatalities` | Alcohol-impaired driving fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `alcohol_impaired_fatality_rate` | Alcohol-impaired fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `bicycle_fatalities` | Bicycle traffic fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `bicycle_fatality_rate` | Bicycle fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `motorcycle_fatalities` | Motorcycle traffic fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `motorcycle_fatality_rate` | Motorcycle fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `pedestrian_fatalities` | Pedestrian traffic fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `pedestrian_fatality_rate` | Pedestrian fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `speeding_related_fatalities` | Speeding-related traffic fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `speeding_related_fatality_rate` | Speeding-related fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `traffic_fatalities` | Total traffic fatalities | numeric_count | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+| `traffic_fatality_rate` | Traffic fatalities per 100,000 population | numeric_rate | 1975 - 2021 | NHTSA FARS (Fatality Analysis Reporting System) |
+
+
+### Transportation
+
+| Variable Name | Description | Type | Years Available | Source |
+|-------------|-------------|------|----------------|--------|
+| `commute_bicycle` | Workers commuting by bicycle | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_car_alone` | Workers commuting by driving alone | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_carpool` | Workers commuting by carpooling | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_long_pct` | Percentage of workers with commute >30 minutes | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_other` | Workers commuting by other means | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_public_transit` | Workers commuting by public transportation | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_walk` | Workers commuting by walking | numeric_percent | 2010 - 2023 | American Community Survey |
+| `commute_work_at_home` | Workers working at home | numeric_percent | 2010 - 2023 | American Community Survey |
+| `mean_commute_time` | Mean commute time (minutes) | numeric_time | 2010 - 2023 | American Community Survey |
+| `no_vehicle_households_pct` | Percentage of households with no vehicle available | numeric_percent | 2010 - 2023 | American Community Survey |
+| `public_transit_trips_per_capita` | Public transit trips per capita | numeric_rate | 2000 - 2022 | National Transit Database |
+| `transit_access_jobs` | Number of jobs accessible by transit within 30 minutes | numeric_count | 2012 - 2022 | All Transit Database |
+| `transit_connectivity_index` | Measure of transit connectivity | numeric_index | 2012 - 2022 | All Transit Database |
+| `transit_performance_index` | Composite measure of transit performance | numeric_index | 2012 - 2022 | All Transit Database |
+| `transportation_cost_burden_pct` | Transportation costs as percentage of household income | numeric_percent | 2001 - 2017 | National Household Travel Survey |
+| `vehicle_miles_traveled_per_capita` | Annual vehicle miles traveled per capita | numeric_distance | 2001 - 2017 | National Household Travel Survey |
+| `zero_vehicle_households_pct` | Percentage of households with no vehicles | numeric_percent | 2009 - 2023 | American Community Survey |
+
+
+## Notes
+
+- Data availability varies by county and year
+- Variable types include: numeric_count, numeric_percent, numeric_rate, numeric_index, numeric_money, numeric_years
+- This dictionary was automatically generated by the SDOH pipeline
+- Last updated: May 02, 2025
+

@@ -19,25 +19,26 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param allow_interpolation Whether to interpolate missing years from available data
 #' @param data_quality_flags List of flags for data quality tracking
 #' @param offline_mode If TRUE, will only use cached data without attempting downloads
+#' @param parallel Whether to use parallel processing
+#' @param parallel_config Optional parallel processing configuration
 #' @return A data frame with housing data for all requested years
 fetch_housing_data <- function(years, 
                               cache_dir = "data/cache", 
                               refresh_cache = FALSE,
-                              allow_simulation = FALSE,
                               allow_interpolation = TRUE,
                               data_quality_flags = list(
                                 direct = "direct",
                                 interpolated = "interpolated",
                                 extrapolated = "extrapolated",
-                                simulated = "simulated",
                                 missing = NA,
                                 imputed = "imputed"
                               ),
-                              offline_mode = FALSE) {
+                              offline_mode = FALSE,
+                              parallel = FALSE,
+                              parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -46,6 +47,57 @@ fetch_housing_data <- function(years,
       message(msg)
     } else {
       cat(msg, "\n")
+    }
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for housing data")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for housing data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
     }
   }
   
@@ -63,8 +115,13 @@ fetch_housing_data <- function(years,
     
     # Check for empty cache with just placeholder data
     if (nrow(housing_data) <= 1 || 
-        (is.data.frame(housing_data) && "data_source" %in% names(housing_data) && 
-         any(grepl("SIMULATED", housing_data$data_source)))) {
+        (is.data.frame(housing_data) && 
+         any(sapply(names(housing_data), function(col) {
+           if (grepl("_data_source$", col)) {
+             return(any(grepl("SIMULATED|NO_DATA_AVAILABLE", housing_data[[col]])))
+           }
+           return(FALSE)
+         })))) {
       print_msg("Cached housing data appears to be empty or a placeholder. Will process files again.")
       # Force refresh by continuing past this point
     } else if (length(missing_years) == 0) {
@@ -86,6 +143,64 @@ fetch_housing_data <- function(years,
   if (!dir.exists(data_dir)) {
     dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
     print_msg(paste("Created housing data directory at:", data_dir))
+  }
+  
+  # Function to find local housing data files
+  find_local_housing_files <- function() {
+    # List of directories to check
+    housing_dirs <- c(
+      "data/housing",
+      "data/cache/housing",
+      "data/homes",
+      "data/shelter"
+    )
+    
+    # Also check subdirectories for specific data types
+    for (base_dir in c("data", "data/cache")) {
+      for (subdir in c("chas", "eviction", "evictionlab", "hmda", "hud")) {
+        housing_dirs <- c(housing_dirs, file.path(base_dir, subdir))
+      }
+    }
+    
+    # List of possible file extensions
+    file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$", "\\.zip$", "\\.txt$")
+    
+    # Search for files
+    all_files <- list()
+    for (dir in housing_dirs) {
+      if (dir.exists(dir)) {
+        for (ext in file_exts) {
+          files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+          if (length(files) > 0) {
+            # Get file info with modification times
+            file_info <- file.info(files)
+            file_info$path <- rownames(file_info)
+            all_files[[paste(dir, ext, sep = "_")]] <- file_info
+          }
+        }
+      }
+    }
+    
+    # Combine all files and sort by recency
+    if (length(all_files) > 0) {
+      all_file_info <- bind_rows(all_files)
+      all_file_info <- all_file_info[order(all_file_info$mtime, decreasing = TRUE), ]
+      all_paths <- all_file_info$path
+    } else {
+      all_paths <- character(0)
+    }
+    
+    # Filter for different types of housing data
+    housing_files <- list(
+      chas = grep("chas|hud|comprehensive.*housing|affordability|housing.*problems", 
+                 all_paths, value = TRUE, ignore.case = TRUE),
+      eviction = grep("eviction|evict|landlord|tenant|rental", 
+                     all_paths, value = TRUE, ignore.case = TRUE),
+      hmda = grep("hmda|mortgage|loan|foreclosure|fed|federal.*reserve", 
+                 all_paths, value = TRUE, ignore.case = TRUE)
+    )
+    
+    return(housing_files)
   }
   
   # Helper function to safely download and read files
@@ -138,19 +253,41 @@ fetch_housing_data <- function(years,
       "2016-2020" = 2020
     )
     
+    # Find local housing files
+    local_files <- find_local_housing_files()
+    chas_files <- local_files$chas
+    
+    print_msg(paste("Found", length(chas_files), "potential CHAS data files"))
+    
     # Find which periods we need to cover our requested years
     target_periods <- names(chas_periods)[chas_periods %in% years]
+    
+    # Look for files that match our target periods
+    period_specific_files <- list()
+    for (period in target_periods) {
+      # Look for files with this period in the name
+      period_files <- grep(period, chas_files, value = TRUE)
+      if (length(period_files) > 0) {
+        period_specific_files[[period]] <- period_files[1]  # Use the first match if multiple
+        print_msg(paste("Found CHAS file for period", period, ":", period_files[1]))
+      }
+    }
     
     # CHAS data list to store results
     chas_data_list <- list()
     
     # Process each period
     for (period in target_periods) {
-      # Define local file paths
-      chas_file <- file.path(data_dir, paste0("chas_", period, ".csv"))
-      
-      # Check if we need to download
-      need_download <- !file.exists(chas_file) || refresh_cache
+      # Check if we have a period-specific file first
+      if (period %in% names(period_specific_files)) {
+        chas_file <- period_specific_files[[period]]
+        print_msg(paste("Using period-specific CHAS file for", period, ":", chas_file))
+      } else {
+        # Define local file paths for downloading
+        chas_file <- file.path(data_dir, paste0("chas_", period, ".csv"))
+        
+        # Check if we need to download
+        need_download <- !file.exists(chas_file) || refresh_cache
       
       if (need_download) {
         # HUD CHAS URLs follow a pattern but it may change
@@ -198,6 +335,14 @@ fetch_housing_data <- function(years,
             })
           } else {
             print_msg(paste("Could not download CHAS data for", period))
+            
+            # If we have any CHAS files, use the most recent one as a fallback
+            if (length(chas_files) > 0) {
+              chas_file <- chas_files[1]  # Most recent file (already sorted)
+              print_msg(paste("Using most recent available CHAS file as fallback:", chas_file))
+            } else {
+              next  # Skip this period
+            }
           }
         }
       } else {
@@ -427,22 +572,35 @@ fetch_housing_data <- function(years,
       "rent_burden_pct" = "Percentage of income spent on rent (median)"
     )
     
-    # Eviction Lab data can be downloaded as a single file with multiple years
-    eviction_file <- file.path(data_dir, "eviction_counties.csv")
+    # Find local housing files
+    local_files <- find_local_housing_files()
+    eviction_files <- local_files$eviction
     
-    # Check if we need to download
-    need_download <- !file.exists(eviction_file) || refresh_cache
+    print_msg(paste("Found", length(eviction_files), "potential Eviction Lab data files"))
     
-    if (need_download) {
-      # Eviction Lab URL for county-level data
-      eviction_url <- "https://eviction-lab-data-downloads.s3.amazonaws.com/full-datasets/counties.csv"
-      
-      # Try to download
-      if (!safe_download(eviction_url, eviction_file, "Eviction Lab county data")) {
-        print_msg("Could not download Eviction Lab data")
-      }
+    # Check if we have any eviction files
+    if (length(eviction_files) > 0) {
+      # Use the most recent file
+      eviction_file <- eviction_files[1]
+      print_msg(paste("Using most recent Eviction Lab file:", eviction_file))
     } else {
-      print_msg("Using existing Eviction Lab file")
+      # Eviction Lab data can be downloaded as a single file with multiple years
+      eviction_file <- file.path(data_dir, "eviction_counties.csv")
+      
+      # Check if we need to download
+      need_download <- !file.exists(eviction_file) || refresh_cache
+    
+      if (need_download) {
+        # Eviction Lab URL for county-level data
+        eviction_url <- "https://eviction-lab-data-downloads.s3.amazonaws.com/full-datasets/counties.csv"
+        
+        # Try to download
+        if (!safe_download(eviction_url, eviction_file, "Eviction Lab county data")) {
+          print_msg("Could not download Eviction Lab data")
+        }
+      } else {
+        print_msg("Using existing Eviction Lab file")
+      }
     }
     
     # Process the data if file exists
@@ -559,8 +717,14 @@ fetch_housing_data <- function(years,
       "foreclosure_rate" = "Foreclosures per 1,000 housing units"
     )
     
-    # HMDA data list to store results
-    hmda_data_list <- list()
+    # Find local housing files
+    local_files <- find_local_housing_files()
+    hmda_files <- local_files$hmda
+    
+    print_msg(paste("Found", length(hmda_files), "potential HMDA data files"))
+    
+    # Check for files that match year patterns
+    year_specific_files <- list()
     
     # Limit to years 2007 and later
     hmda_years <- years[years >= 2007]
@@ -571,33 +735,63 @@ fetch_housing_data <- function(years,
         next
       }
       
-      # Define file paths
-      hmda_file <- file.path(data_dir, paste0("hmda_", year, ".csv"))
+      # Look for files with this year in the name
+      year_files <- grep(paste0("_", year, "\\.|_", year, "$"), hmda_files, value = TRUE)
+      if (length(year_files) > 0) {
+        year_specific_files[[as.character(year)]] <- year_files[1]  # Use the first match if multiple
+        print_msg(paste("Found HMDA file for year", year, ":", year_files[1]))
+      }
+    }
+    
+    # HMDA data list to store results
+    hmda_data_list <- list()
+    
+    for (year in hmda_years) {
+      # Skip future years
+      if (year > as.integer(format(Sys.Date(), "%Y"))) {
+        next
+      }
       
-      # Check if we need to download
-      need_download <- !file.exists(hmda_file) || refresh_cache
-      
-      if (need_download) {
-        # HMDA URLs can vary by year and source
-        # Here we use a simplified URL pattern (real implementation would need actual URLs)
-        hmda_url <- paste0(
-          "https://www.ffiec.gov/hmda/data/countyfiles/", 
-          year, 
-          "/hmda_county_", 
-          year, 
-          ".zip"
-        )
-        
-        # Try to download - note this is a placeholder URL
-        if (!safe_download(hmda_url, hmda_file, paste("HMDA data for", year))) {
-          print_msg(paste("Could not download HMDA data for", year))
-          # HMDA data is complex to access via direct download
-          # In a real implementation, you would need to navigate the FFIEC site
-          # or use their API if available
-          next
-        }
+      # Check if we have a year-specific file first
+      if (as.character(year) %in% names(year_specific_files)) {
+        hmda_file <- year_specific_files[[as.character(year)]]
+        print_msg(paste("Using year-specific HMDA file for", year, ":", hmda_file))
       } else {
-        print_msg(paste("Using existing HMDA file for", year))
+        # Define file paths for downloading
+        hmda_file <- file.path(data_dir, paste0("hmda_", year, ".csv"))
+        
+        # Check if we need to download
+        need_download <- !file.exists(hmda_file) || refresh_cache
+      
+        if (need_download) {
+          # HMDA URLs can vary by year and source
+          # Here we use a simplified URL pattern (real implementation would need actual URLs)
+          hmda_url <- paste0(
+            "https://www.ffiec.gov/hmda/data/countyfiles/", 
+            year, 
+            "/hmda_county_", 
+            year, 
+            ".zip"
+          )
+          
+          # Try to download - note this is a placeholder URL
+          if (!safe_download(hmda_url, hmda_file, paste("HMDA data for", year))) {
+            print_msg(paste("Could not download HMDA data for", year))
+            
+            # If we have any HMDA files, use the most recent one as a fallback
+            if (length(hmda_files) > 0) {
+              hmda_file <- hmda_files[1]  # Most recent file (already sorted)
+              print_msg(paste("Using most recent available HMDA file as fallback:", hmda_file))
+            } else {
+              # HMDA data is complex to access via direct download
+              # In a real implementation, you would need to navigate the FFIEC site
+              # or use their API if available
+              next
+            }
+          }
+        } else {
+          print_msg(paste("Using existing HMDA file for", year))
+        }
       }
       
       # Process the data if file exists - this is simplified for example purposes
@@ -693,24 +887,77 @@ fetch_housing_data <- function(years,
     }
   }
   
-  # Get data from different housing sources
-  chas_data <- get_chas_data()
-  eviction_data <- get_eviction_data()
-  hmda_data <- get_hmda_data()
-  
-  # Combine all data sources
-  housing_data_list <- list()
-  
-  if (!is.null(chas_data) && nrow(chas_data) > 0) {
-    housing_data_list[["chas"]] <- chas_data
-  }
-  
-  if (!is.null(eviction_data) && nrow(eviction_data) > 0) {
-    housing_data_list[["eviction"]] <- eviction_data
-  }
-  
-  if (!is.null(hmda_data) && nrow(hmda_data) > 0) {
-    housing_data_list[["hmda"]] <- hmda_data
+  # Get data from different housing sources - use parallel processing if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+    print_msg("Using parallel processing to fetch data from multiple housing sources")
+    
+    # Define the data sources to fetch
+    data_sources <- c("chas", "eviction", "hmda")
+    
+    # Create a function to process one data source
+    process_data_source <- function(source) {
+      print_msg(paste("Processing housing data source:", source))
+      
+      if (source == "chas") {
+        return(get_chas_data())
+      } else if (source == "eviction") {
+        return(get_eviction_data())
+      } else if (source == "hmda") {
+        return(get_hmda_data())
+      } else {
+        return(NULL)
+      }
+    }
+    
+    # Use future.apply to process data sources in parallel
+    # Set up progress reporting if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      # Create a progress handler
+      progressr::handlers(progressr::handler_progress())
+      
+      # Process with progress tracking
+      housing_data_sources <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(data_sources))
+        
+        future.apply::future_lapply(data_sources, function(source) {
+          result <- process_data_source(source)
+          p(message = paste("Processed housing data source:", source))
+          return(result)
+        })
+      })
+    } else {
+      # Process without progress tracking
+      housing_data_sources <- future.apply::future_lapply(data_sources, process_data_source)
+    }
+    
+    # Convert results to named list
+    names(housing_data_sources) <- data_sources
+    
+    # Filter out NULL results
+    housing_data_list <- housing_data_sources[!sapply(housing_data_sources, is.null)]
+    housing_data_list <- housing_data_list[sapply(housing_data_list, function(x) !is.null(x) && nrow(x) > 0)]
+    
+  } else {
+    # Sequential processing
+    print_msg("Using sequential processing to fetch data from multiple housing sources")
+    chas_data <- get_chas_data()
+    eviction_data <- get_eviction_data()
+    hmda_data <- get_hmda_data()
+    
+    # Combine all data sources
+    housing_data_list <- list()
+    
+    if (!is.null(chas_data) && nrow(chas_data) > 0) {
+      housing_data_list[["chas"]] <- chas_data
+    }
+    
+    if (!is.null(eviction_data) && nrow(eviction_data) > 0) {
+      housing_data_list[["eviction"]] <- eviction_data
+    }
+    
+    if (!is.null(hmda_data) && nrow(hmda_data) > 0) {
+      housing_data_list[["hmda"]] <- hmda_data
+    }
   }
   
   # Process if we have data
@@ -828,124 +1075,9 @@ fetch_housing_data <- function(years,
     print_msg(paste("Cached housing data to:", cache_file))
     
     return(combined_housing_data)
-  } else if (allow_simulation) {
-    # Create simulated data
-    print_msg("No housing data found. Creating simulated data...")
-    
-    # Housing variables to simulate
-    housing_vars <- c(
-      "severely_cost_burdened_owners_pct" = "Percentage of owner households spending >50% of income on housing",
-      "severely_cost_burdened_renters_pct" = "Percentage of renter households spending >50% of income on housing",
-      "low_income_renters_affordable_units_ratio" = "Ratio of affordable units to low-income renters",
-      "housing_problems_pct" = "Percentage of households with at least one housing problem",
-      "overcrowded_housing_pct" = "Percentage of housing units with >1 person per room",
-      "eviction_rate" = "Number of evictions per 100 renter homes",
-      "eviction_filing_rate" = "Number of eviction filings per 100 renter homes",
-      "rent_burden_pct" = "Percentage of income spent on rent (median)",
-      "mortgage_denial_rate" = "Percentage of mortgage applications denied",
-      "high_cost_loans_pct" = "Percentage of loans that are high-cost",
-      "foreclosure_rate" = "Foreclosures per 1,000 housing units"
-    )
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Add simulated values for each variable
-      for (var_name in names(housing_vars)) {
-        if (var_name == "severely_cost_burdened_owners_pct") {
-          # Typically 10-25%
-          year_data[[var_name]] <- runif(nrow(year_data), 10, 25)
-        } else if (var_name == "severely_cost_burdened_renters_pct") {
-          # Typically 20-40%
-          year_data[[var_name]] <- runif(nrow(year_data), 20, 40)
-        } else if (var_name == "low_income_renters_affordable_units_ratio") {
-          # Typically 0.4-1.2
-          year_data[[var_name]] <- runif(nrow(year_data), 0.4, 1.2)
-        } else if (var_name == "housing_problems_pct") {
-          # Typically 20-50%
-          year_data[[var_name]] <- runif(nrow(year_data), 20, 50)
-        } else if (var_name == "overcrowded_housing_pct") {
-          # Typically 1-10%
-          year_data[[var_name]] <- runif(nrow(year_data), 1, 10)
-        } else if (var_name == "eviction_rate") {
-          # Typically 1-8 per 100 renter homes
-          year_data[[var_name]] <- runif(nrow(year_data), 1, 8)
-        } else if (var_name == "eviction_filing_rate") {
-          # Typically 3-15 per 100 renter homes
-          year_data[[var_name]] <- runif(nrow(year_data), 3, 15)
-        } else if (var_name == "rent_burden_pct") {
-          # Typically 25-40%
-          year_data[[var_name]] <- runif(nrow(year_data), 25, 40)
-        } else if (var_name == "mortgage_denial_rate") {
-          # Typically 10-30%
-          year_data[[var_name]] <- runif(nrow(year_data), 10, 30)
-        } else if (var_name == "high_cost_loans_pct") {
-          # Typically 5-20%
-          year_data[[var_name]] <- runif(nrow(year_data), 5, 20)
-        } else if (var_name == "foreclosure_rate") {
-          # Typically 1-10 per 1,000 housing units
-          year_data[[var_name]] <- runif(nrow(year_data), 1, 10)
-        } else {
-          # Default - 0-100 range
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Housing Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated housing data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
-    print_msg("No housing data available and simulation not allowed. Creating empty dataset with NAs.")
+    # No data available - create empty dataset with proper structure
+    print_msg("No housing data available. Creating empty dataset with proper structure.")
     
     # Get variable list for housing data
     housing_vars <- c(
@@ -1001,12 +1133,29 @@ fetch_housing_data <- function(years,
     for (var in housing_vars) {
       grid[[var]] <- NA_real_
       grid[[paste0(var, "_data_quality")]] <- data_quality_flags$missing
-      grid[[paste0(var, "_data_source")]] <- "NOT_AVAILABLE"
+      grid[[paste0(var, "_data_source")]] <- "NO_DATA_AVAILABLE"
       grid[[paste0(var, "_data_vintage")]] <- NA_character_
     }
     
     housing_data <- as_tibble(grid)
     print_msg(paste("Created empty housing dataset with", nrow(housing_data), "rows"))
+    
+    # Provide clear error message about missing data
+    print_msg("ERROR: No housing data files found. Please download housing data.")
+    print_msg("Required files should be placed in one of these directories:")
+    for (dir in c("data/housing", "data/chas", "data/eviction", "data/hmda")) {
+      print_msg(paste("  -", dir))
+    }
+    print_msg("File formats needed:")
+    print_msg("1. HUD CHAS data: Comprehensive Housing Affordability Strategy data")
+    print_msg("   - Download from: https://www.huduser.gov/portal/datasets/cp.html")
+    print_msg("   - Expected format: CSV files with county-level housing cost burden data")
+    print_msg("2. Eviction Lab data: County-level eviction statistics")
+    print_msg("   - Download from: https://evictionlab.org/get-the-data/")
+    print_msg("   - Expected format: CSV files with eviction rates by county")
+    print_msg("3. HMDA data: Home Mortgage Disclosure Act data")
+    print_msg("   - Download from: https://ffiec.cfpb.gov/data-publication/aggregate-reports")
+    print_msg("   - Expected format: CSV files with mortgage application outcomes by county")
     
     # Cache the empty data
     saveRDS(housing_data, cache_file)
@@ -1031,21 +1180,32 @@ if (!is_sourced()) {
   # Test for last 5 years
   test_years <- (current_year-4):current_year
   
+  # Check for required packages for parallel processing
+  has_parallel_deps <- requireNamespace("future", quietly = TRUE) && 
+                       requireNamespace("future.apply", quietly = TRUE)
+  
+  # Use parallel processing if dependencies are available
+  use_parallel <- has_parallel_deps
+  if (use_parallel) {
+    cat("Using parallel processing for housing data fetching test\n")
+  } else {
+    cat("Parallel processing dependencies not available, using sequential processing\n")
+  }
+  
   # Test the function
   result <- fetch_housing_data(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = list(
       direct = "direct",
       interpolated = "interpolated",
       extrapolated = "extrapolated",
-      simulated = "simulated",
       missing = NA,
       imputed = "imputed"
-    )
+    ),
+    parallel = use_parallel
   )
   
   cat("Test completed with", nrow(result), "rows of data.\n")

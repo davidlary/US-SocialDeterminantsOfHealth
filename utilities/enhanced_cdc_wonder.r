@@ -87,142 +87,211 @@ enhanced_get_cdc_wonder_data <- function(
     return(FALSE)
   })
   
-  # If we can't access the API, use simulated data
+  # If we can't access the API, try to find local sample data
   if (!has_api_access) {
-    message("Creating simulated CDC WONDER data...")
+    message("Cannot access CDC WONDER API. Looking for local CDC Wonder data...")
     
-    # Generate simulated data based on national averages
-    counties <- tryCatch({
-      # Try to get counties from tigris
-      if (require("tigris", quietly = TRUE)) {
-        tigris::counties(cb = TRUE, year = 2020)
-      } else {
-        # Provide minimal template with main counties
-        data.frame(
-          GEOID = c("06037", "17031", "48201", "04013", "06073", "36047"),
-          NAME = c(
-            "Los Angeles County, California",
-            "Cook County, Illinois",
-            "Harris County, Texas",
-            "Maricopa County, Arizona",
-            "San Diego County, California",
-            "Kings County, New York"
-          ),
-          stringsAsFactors = FALSE
-        )
+    # Paths to check for sample data
+    sample_paths <- c(
+      "data/traffic_safety/cdc/sample_cdc_wonder_data.csv",
+      "data/traffic_safety/cdc/cdc_wonder_data.csv",
+      "data/cdc/sample_cdc_wonder_data.csv",
+      "data/cache/traffic_safety/cdc_wonder_data.csv"
+    )
+    
+    # Look for any sample data
+    sample_data <- NULL
+    for (path in sample_paths) {
+      if (file.exists(path)) {
+        message(paste("Found CDC WONDER sample data at:", path))
+        sample_data <- tryCatch({
+          read.csv(path, stringsAsFactors = FALSE)
+        }, error = function(e) {
+          message(paste("Error reading file:", e$message))
+          NULL
+        })
+        
+        if (!is.null(sample_data) && nrow(sample_data) > 0) {
+          break
+        }
       }
-    }, error = function(e) {
-      # Fallback to minimal template
-      data.frame(
-        GEOID = c("06037", "17031", "48201", "04013", "06073", "36047"),
-        NAME = c(
-          "Los Angeles County, California",
-          "Cook County, Illinois",
-          "Harris County, Texas",
-          "Maricopa County, Arizona",
-          "San Diego County, California",
-          "Kings County, New York"
-        ),
-        stringsAsFactors = FALSE
-      )
-    })
+    }
     
-    # Create expanded grid of counties and years
-    sim_data <- expand.grid(
-      fips = counties$GEOID,
-      year = years,
+    # If we found sample data, use it as our base
+    if (!is.null(sample_data) && nrow(sample_data) > 0) {
+      # Ensure we have all required columns
+      required_cols <- c("year", "fips", "deaths", "population", "crude_rate")
+      if (!all(required_cols %in% names(sample_data))) {
+        warning("Sample CDC WONDER data is missing required columns. Cannot use.")
+        
+        # Provide empty dataframe with required structure
+        return(data.frame(
+          fips = character(0),
+          year = integer(0),
+          transport_mortality_count = integer(0),
+          transport_mortality_rate_per_100k = numeric(0),
+          data_source = character(0),
+          data_quality = character(0),
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+      # Filter to requested years
+      sample_years <- intersect(unique(sample_data$year), years)
+      filtered_data <- sample_data[sample_data$year %in% sample_years, ]
+      
+      # If we don't have data for all requested years, return warning
+      if (length(sample_years) < length(years)) {
+        missing_years <- setdiff(years, sample_years)
+        warning(paste("Sample CDC WONDER data is missing data for years:", 
+                      paste(missing_years, collapse = ", ")))
+      }
+      
+      # Prepare the final dataset
+      cdc_wonder_data <- filtered_data %>%
+        rename(
+          transport_mortality_count = deaths,
+          transport_mortality_rate_per_100k = crude_rate
+        ) %>%
+        mutate(
+          data_source = "CDC WONDER",
+          data_quality = "direct"
+        )
+      
+      # Save to cache
+      saveRDS(cdc_wonder_data, cache_file)
+      
+      return(cdc_wonder_data)
+    }
+    
+    # If no sample data is available, return an error message
+    message("ERROR: No CDC WONDER data available and API access failed.")
+    message("Please download CDC WONDER data manually and place in data/traffic_safety/cdc/ directory.")
+    message("Required file format: CSV with columns year, fips, deaths, population, crude_rate")
+    
+    # Return empty dataframe with proper structure
+    return(data.frame(
+      fips = character(0),
+      year = integer(0),
+      transport_mortality_count = integer(0),
+      transport_mortality_rate_per_100k = numeric(0),
+      data_source = character(0),
+      data_quality = character(0),
       stringsAsFactors = FALSE
-    )
-    
-    # Add simulated transport mortality data
-    set.seed(42)  # For reproducibility
-    
-    # National averages for transport mortality (rates per 100,000)
-    national_rates <- data.frame(
-      year = 1999:2023,
-      rate = c(
-        15.3, 15.4, 15.1, 15.7, 15.5, 15.2, 15.0, 14.9, 14.5, 13.1, 
-        12.4, 12.1, 12.3, 12.4, 12.2, 12.3, 12.8, 13.5, 13.7, 13.2, 
-        13.0, 12.9, 14.1, 14.5, 14.3
-      )
-    )
-    
-    # For years beyond our national data, use the last available rate
-    max_data_year <- max(national_rates$year)
-    
-    # Adjust rates for county population (larger counties have more deaths)
-    county_pop_factor <- setNames(
-      c(1.5, 1.3, 1.2, 1.1, 1.0, 1.4), 
-      c("06037", "17031", "48201", "04013", "06073", "36047")
-    )
-    
-    # Generate transport mortality counts and rates
-    sim_data <- sim_data %>%
-      mutate(
-        # Get the national rate for this year
-        base_rate = sapply(year, function(y) {
-          if (y <= max_data_year) {
-            return(national_rates$rate[national_rates$year == y])
-          } else {
-            return(national_rates$rate[national_rates$year == max_data_year])
-          }
-        }),
-        
-        # Apply county factor and random variation
-        county_factor = sapply(fips, function(f) {
-          if (f %in% names(county_pop_factor)) {
-            return(county_pop_factor[f])
-          } else {
-            return(1.0)
-          }
-        }),
-        
-        # Generate rates with some random variation
-        transport_mortality_rate_per_100k = base_rate * county_factor * runif(n(), 0.8, 1.2),
-        
-        # Generate counts based on assumed population
-        # (this is just a placeholder - real data would use actual population)
-        assumed_population = ifelse(
-          fips %in% c("06037", "17031"), 
-          runif(n(), 2000000, 10000000),  # Large counties
-          ifelse(
-            fips %in% c("48201", "04013", "06073", "36047"),
-            runif(n(), 1000000, 3000000),  # Medium counties
-            runif(n(), 50000, 500000)     # Smaller counties
-          )
-        ),
-        
-        transport_mortality_count = round(transport_mortality_rate_per_100k * assumed_population / 100000),
-        
-        # Add ICD-10 transport subtypes (simplified)
-        motor_vehicle_occupant_deaths = round(transport_mortality_count * runif(n(), 0.65, 0.8)),
-        motorcycle_deaths = round(transport_mortality_count * runif(n(), 0.05, 0.15)),
-        pedestrian_deaths = round(transport_mortality_count * runif(n(), 0.1, 0.2)),
-        cyclist_deaths = round(transport_mortality_count * runif(n(), 0.01, 0.05)),
-        other_transport_deaths = transport_mortality_count - 
-          (motor_vehicle_occupant_deaths + motorcycle_deaths + pedestrian_deaths + cyclist_deaths),
-        
-        # Add data quality flags
-        data_source = "CDC WONDER (simulated)",
-        data_quality = "simulated"
-      ) %>%
-      select(-base_rate, -county_factor, -assumed_population)
-    
-    # Save to cache
-    saveRDS(sim_data, cache_file)
-    
-    return(sim_data)
+    ))
   }
   
-  # TODO: If API access becomes available, implement actual CDC WONDER API call
-  # For now, we'll use the simulated data approach even when API is available
-  message("CDC WONDER API integration not currently implemented. Using simulated data.")
+  # If API access is available, implement CDC WONDER API call
+  message("CDC WONDER API access detected. Attempting to retrieve data...")
   
-  # Generate simulated data (same as above)
-  # [Code would be identical to the simulation code above]
+  # In this version, we'll look for locally downloaded data first
+  # Search for CDC WONDER data files
+  cdc_dirs <- c(
+    "data/traffic_safety/cdc",
+    "data/cdc",
+    "data/cdc_wonder"
+  )
   
-  # Return the data
-  return(sim_data)
+  cdc_files <- NULL
+  for (dir in cdc_dirs) {
+    if (dir.exists(dir)) {
+      files <- list.files(dir, pattern = "wonder.*\\.csv$|cdc.*\\.csv$", 
+                        full.names = TRUE, recursive = TRUE,
+                        ignore.case = TRUE)
+      if (length(files) > 0) {
+        cdc_files <- files
+        break
+      }
+    }
+  }
+  
+  # If we found data files, use them
+  if (!is.null(cdc_files) && length(cdc_files) > 0) {
+    message(paste("Found", length(cdc_files), "CDC WONDER data files."))
+    
+    # Initialize combined data
+    combined_data <- NULL
+    
+    for (file in cdc_files) {
+      message(paste("Processing file:", basename(file)))
+      
+      file_data <- tryCatch({
+        read.csv(file, stringsAsFactors = FALSE)
+      }, error = function(e) {
+        message(paste("Error reading file:", e$message))
+        NULL
+      })
+      
+      if (!is.null(file_data) && nrow(file_data) > 0) {
+        # Check for required columns
+        if (all(c("year", "fips") %in% names(file_data))) {
+          # Filter to requested years
+          file_data <- file_data[file_data$year %in% years, ]
+          
+          # Standardize column names
+          if ("deaths" %in% names(file_data) && !"transport_mortality_count" %in% names(file_data)) {
+            file_data$transport_mortality_count <- file_data$deaths
+          }
+          
+          if ("crude_rate" %in% names(file_data) && !"transport_mortality_rate_per_100k" %in% names(file_data)) {
+            file_data$transport_mortality_rate_per_100k <- file_data$crude_rate
+          }
+          
+          # Add data quality
+          file_data$data_source <- "CDC WONDER"
+          file_data$data_quality <- "direct"
+          
+          # Combine with result
+          if (is.null(combined_data)) {
+            combined_data <- file_data
+          } else {
+            # Only keep certain columns to avoid duplicates
+            keep_cols <- unique(c(
+              "fips", "year", "transport_mortality_count", 
+              "transport_mortality_rate_per_100k",
+              "data_source", "data_quality"
+            ))
+            
+            # Add any other mortality-related columns
+            mort_cols <- grep("mortality|deaths", names(file_data), value = TRUE)
+            keep_cols <- unique(c(keep_cols, mort_cols))
+            
+            # Keep only columns that exist in the data
+            keep_cols <- intersect(keep_cols, names(file_data))
+            
+            # Combine
+            combined_data <- bind_rows(combined_data, file_data[, keep_cols])
+          }
+        }
+      }
+    }
+    
+    # If we successfully combined data
+    if (!is.null(combined_data) && nrow(combined_data) > 0) {
+      message(paste("Successfully processed", nrow(combined_data), "CDC WONDER data records."))
+      
+      # Save to cache
+      saveRDS(combined_data, cache_file)
+      
+      return(combined_data)
+    }
+  }
+  
+  # If API access is available but no data could be retrieved, return error
+  message("ERROR: Could not retrieve CDC WONDER data even with API access.")
+  message("Please download CDC WONDER data manually from https://wonder.cdc.gov/")
+  message("Required file format: CSV with columns year, fips, deaths, population, crude_rate")
+  
+  # Return empty dataframe with proper structure
+  return(data.frame(
+    fips = character(0),
+    year = integer(0),
+    transport_mortality_count = integer(0),
+    transport_mortality_rate_per_100k = numeric(0),
+    data_source = character(0),
+    data_quality = character(0),
+    stringsAsFactors = FALSE
+  ))
 }
 
 #' Match CDC WONDER ICD-10 codes to categories

@@ -11,6 +11,62 @@ library(lubridate)
 library(sf)
 library(zoo) # For interpolation if needed
 
+#' Find local USDA food environment data files
+#'
+#' Searches multiple directories for USDA food environment data files, including
+#' Food Environment Atlas and Food Access Research Atlas data.
+#'
+#' @return A list of file paths organized by data type
+find_local_food_atlas_files <- function() {
+  # List of directories to check
+  food_dirs <- c(
+    "data/usda_food_atlas",
+    "data/cache/usda",
+    "data/food",
+    "data/food_environment",
+    "data/food_access"
+  )
+  
+  # Also check subdirectories for specific data types
+  for (base_dir in c("data", "data/cache")) {
+    for (subdir in c("food", "usda", "usda_food_atlas", "food_atlas", "food_access", "food_environment")) {
+      food_dirs <- c(food_dirs, file.path(base_dir, subdir))
+    }
+  }
+  
+  # List of possible file extensions
+  file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$", "\\.zip$", "\\.txt$", "\\.rds$")
+  
+  # Search for files
+  all_files <- c()
+  for (dir in food_dirs) {
+    if (dir.exists(dir)) {
+      for (ext in file_exts) {
+        files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+        all_files <- c(all_files, files)
+      }
+    }
+  }
+  
+  # Filter for different types of food environment data
+  food_files <- list(
+    food_environment = grep("food.*environment|food.*atlas|foodenvironment|FoodEnvironment|grocery|food.*store", 
+                           all_files, value = TRUE, ignore.case = TRUE),
+    food_access = grep("food.*access|foodaccess|food.*desert|low.*access", 
+                      all_files, value = TRUE, ignore.case = TRUE)
+  )
+  
+  # Sort by modification time (newest first)
+  for (type in names(food_files)) {
+    if (length(food_files[[type]]) > 0) {
+      file_info <- file.info(food_files[[type]])
+      food_files[[type]] <- food_files[[type]][order(file_info$mtime, decreasing = TRUE)]
+    }
+  }
+  
+  return(food_files)
+}
+
 #' Fetch USDA Food Environment Atlas data
 #'
 #' Retrieves food environment data from the USDA Food Environment Atlas and
@@ -26,7 +82,6 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param offline_mode If TRUE, will only use cached data without attempting downloads
 #' @param allow_interpolation Whether to interpolate missing years
 #' @param data_quality_flags List with standardized data quality flags
@@ -34,13 +89,11 @@ library(zoo) # For interpolation if needed
 fetch_usda_food_atlas <- function(years, 
                                  cache_dir = "data/cache", 
                                  refresh_cache = FALSE,
-                                 allow_simulation = FALSE,
                                  allow_interpolation = TRUE,
                                  data_quality_flags = list(
                                    direct = "direct",
                                    interpolated = "interpolated",
                                    extrapolated = "extrapolated",
-                                   simulated = "simulated",
                                    missing = NA,
                                    imputed = "imputed"
                                  ),
@@ -193,6 +246,11 @@ fetch_usda_food_atlas <- function(years,
     return(FALSE)
   }
   
+  # Find available local food environment files
+  local_files <- find_local_food_atlas_files()
+  food_env_files <- local_files$food_environment
+  food_access_files <- local_files$food_access
+  
   # Food Environment Atlas data
   # Define direct download URLs for USDA Food Environment Atlas
   # Note: These URLs may change, check USDA site for updates
@@ -203,14 +261,31 @@ fetch_usda_food_atlas <- function(years,
   # Define local file path for downloaded data
   food_env_local_file <- file.path(data_dir, food_env_file)
   
-  # Check if file exists, download if it doesn't
+  # Check if we have any existing food environment files
   food_env_available <- FALSE
-  if (!file.exists(food_env_local_file) || refresh_cache) {
+  if (length(food_env_files) > 0 && !refresh_cache) {
+    # Use the first (newest) file
+    food_env_local_file <- food_env_files[1]
+    print_msg(paste("Using existing USDA Food Atlas file:", basename(food_env_local_file)))
+    food_env_available <- validate_data_file(food_env_local_file)
+  } else if (!offline_mode) {
+    # Try to download if no existing files or refresh requested
     food_env_available <- safe_download(food_env_url, food_env_local_file, 
                                      "USDA Food Environment Atlas")
-  } else {
-    print_msg(paste("Using existing USDA Food Atlas file:", food_env_local_file))
+    
+    # If download failed but we have existing files, use those instead
+    if (!food_env_available && length(food_env_files) > 0) {
+      food_env_local_file <- food_env_files[1]
+      print_msg(paste("Download failed. Using existing USDA Food Atlas file:", basename(food_env_local_file)))
+      food_env_available <- validate_data_file(food_env_local_file)
+    }
+  } else if (offline_mode && length(food_env_files) > 0) {
+    # In offline mode, use existing files if available
+    food_env_local_file <- food_env_files[1]
+    print_msg(paste("Offline mode. Using existing USDA Food Atlas file:", basename(food_env_local_file)))
     food_env_available <- validate_data_file(food_env_local_file)
+  } else {
+    print_msg("No USDA Food Environment Atlas data available in offline mode")
   }
   
   # Food Access Research Atlas data (contains food desert information)
@@ -222,14 +297,31 @@ fetch_usda_food_atlas <- function(years,
   # Define local file path
   food_access_local_file <- file.path(data_dir, food_access_file)
   
-  # Check if file exists, download if it doesn't
+  # Check if we have any existing food access files
   food_access_available <- FALSE
-  if (!file.exists(food_access_local_file) || refresh_cache) {
+  if (length(food_access_files) > 0 && !refresh_cache) {
+    # Use the first (newest) file
+    food_access_local_file <- food_access_files[1]
+    print_msg(paste("Using existing Food Access Research Atlas file:", basename(food_access_local_file)))
+    food_access_available <- validate_data_file(food_access_local_file, "csv")
+  } else if (!offline_mode) {
+    # Try to download if no existing files or refresh requested
     food_access_available <- safe_download(food_access_url, food_access_local_file, 
                                         "USDA Food Access Research Atlas")
-  } else {
-    print_msg(paste("Using existing Food Access Research Atlas file:", food_access_local_file))
+    
+    # If download failed but we have existing files, use those instead
+    if (!food_access_available && length(food_access_files) > 0) {
+      food_access_local_file <- food_access_files[1]
+      print_msg(paste("Download failed. Using existing Food Access Research Atlas file:", basename(food_access_local_file)))
+      food_access_available <- validate_data_file(food_access_local_file, "csv")
+    }
+  } else if (offline_mode && length(food_access_files) > 0) {
+    # In offline mode, use existing files if available
+    food_access_local_file <- food_access_files[1]
+    print_msg(paste("Offline mode. Using existing Food Access Research Atlas file:", basename(food_access_local_file)))
     food_access_available <- validate_data_file(food_access_local_file, "csv")
+  } else {
+    print_msg("No USDA Food Access Research Atlas data available in offline mode")
   }
   
   # Function to parse the Food Atlas Excel file
@@ -862,175 +954,8 @@ fetch_usda_food_atlas <- function(years,
     print_msg(paste("Cached combined food environment data to:", cache_file))
     
     return(combined_data)
-  } else if (allow_simulation) {
-    # If no real data and simulation allowed, create placeholder data
-    print_msg("No USDA food environment data found. Creating simulated data...")
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Comprehensive list of food environment variables to simulate
-    sim_variables <- c(
-      # From Food Environment Atlas
-      "grocery_stores_per_1000",
-      "supercenters_per_1000",
-      "convenience_stores_per_1000",
-      "specialized_food_stores_per_1000",
-      "snap_authorized_stores_per_1000",
-      "wic_authorized_stores_per_1000",
-      "farmers_markets_per_1000",
-      "fast_food_restaurants_per_1000",
-      "full_service_restaurants_per_1000",
-      "low_income_low_access_pct",
-      "low_income_low_access_child_pct",
-      "low_income_low_access_seniors_pct",
-      "low_access_vehicle_pct",
-      "low_income_pct",
-      "snap_participation_rate",
-      "snap_benefits_redemption_per_capita",
-      "food_insecurity_rate",
-      "child_food_insecurity_rate",
-      "price_index_fruits_vegetables",
-      "price_index_meat",
-      "price_index_soda",
-      "price_index_milk",
-      "school_lunch_pct",
-      "summer_food_program_pct",
-      "adult_obesity_pct",
-      "adult_diabetes_pct",
-      
-      # From Food Access Research Atlas
-      "urban_food_desert_pct_1_mile",
-      "rural_food_desert_pct_10_miles",
-      "low_income_food_desert_pct_1_mile",
-      "children_food_desert_pct_1_mile",
-      "seniors_food_desert_pct_1_mile",
-      "no_vehicle_food_desert_pct_1_mile",
-      "snap_food_desert_pct_1_mile"
-    )
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Add simulated values for each variable
-      for (var_name in sim_variables) {
-        # Simulate values based on variable type with realistic ranges
-        if (grepl("per_1000$", var_name)) {
-          # Rates per 1000 - typically small positive numbers
-          if (grepl("grocery|supercenters", var_name)) {
-            # Grocery stores are less common
-            year_data[[var_name]] <- runif(nrow(year_data), 0.05, 0.7)
-          } else if (grepl("convenience", var_name)) {
-            # Convenience stores are more common
-            year_data[[var_name]] <- runif(nrow(year_data), 0.3, 1.5)
-          } else if (grepl("farmers_markets", var_name)) {
-            # Farmers markets are less common
-            year_data[[var_name]] <- runif(nrow(year_data), 0.01, 0.2)
-          } else if (grepl("fast_food", var_name)) {
-            # Fast food restaurants are common
-            year_data[[var_name]] <- runif(nrow(year_data), 0.5, 2.0)
-          } else {
-            # Other per 1000 variables
-            year_data[[var_name]] <- runif(nrow(year_data), 0.1, 1.0)
-          }
-        } else if (grepl("per_capita$", var_name)) {
-          # Per capita values - typically very small
-          year_data[[var_name]] <- runif(nrow(year_data), 0.001, 0.1)
-        } else if (grepl("_pct$|_rate$", var_name)) {
-          # Percentages/rates - between 0 and 100
-          if (grepl("obesity|diabetes", var_name)) {
-            # Health conditions typically 10-40%
-            year_data[[var_name]] <- runif(nrow(year_data), 10, 40)
-          } else if (grepl("food_desert", var_name)) {
-            # Food desert percentages typically 5-25%
-            year_data[[var_name]] <- runif(nrow(year_data), 5, 25)
-          } else if (grepl("food_insecurity", var_name)) {
-            # Food insecurity typically 8-20%
-            year_data[[var_name]] <- runif(nrow(year_data), 8, 20)
-            
-            # Child food insecurity typically higher
-            if (grepl("child", var_name)) {
-              year_data[[var_name]] <- year_data[[var_name]] * runif(nrow(year_data), 1.1, 1.5)
-            }
-          } else {
-            # Other percentages
-            year_data[[var_name]] <- runif(nrow(year_data), 0, 50)
-          }
-        } else if (grepl("price_index", var_name)) {
-          # Price indices typically 80-120
-          year_data[[var_name]] <- runif(nrow(year_data), 80, 120)
-        } else {
-          # Default - medium positive numbers
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Food Environment Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Add trends over time for realistic simulation
-    # Food insecurity decreasing slightly over time
-    years_factor <- as.integer(factor(simulated_data$year, levels = sort(unique(simulated_data$year))))
-    simulated_data$food_insecurity_rate <- simulated_data$food_insecurity_rate * (1 - 0.01 * (years_factor - 1))
-    
-    # Grocery stores slightly decreasing, convenience stores increasing
-    simulated_data$grocery_stores_per_1000 <- simulated_data$grocery_stores_per_1000 * (1 - 0.02 * (years_factor - 1))
-    simulated_data$convenience_stores_per_1000 <- simulated_data$convenience_stores_per_1000 * (1 + 0.02 * (years_factor - 1))
-    
-    # Fast food increasing
-    simulated_data$fast_food_restaurants_per_1000 <- simulated_data$fast_food_restaurants_per_1000 * (1 + 0.03 * (years_factor - 1))
-    
-    # Farmers markets increasing (more rapidly in recent years)
-    simulated_data$farmers_markets_per_1000 <- simulated_data$farmers_markets_per_1000 * (1 + 0.05 * (years_factor - 1))
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated food environment data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
+    # No data available - create empty dataset with NAs and provide clear error messages
     print_msg("No USDA food environment data available. Creating empty dataset with NAs since simulation not allowed...")
     
     # Define the variables we would have included
@@ -1156,38 +1081,36 @@ if (!is_sourced()) {
     direct = "direct",
     interpolated = "interpolated",
     extrapolated = "extrapolated",
-    simulated = "simulated",
     missing = NA,
     imputed = "imputed"
   )
   
   # Test the function with various settings
-  cat("\n----- TEST 1: With simulation allowed -----\n")
-  result_sim <- fetch_usda_food_atlas(
+  cat("\n----- TEST 1: With interpolation -----\n")
+  result_interp <- fetch_usda_food_atlas(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = data_quality_flags,
     offline_mode = FALSE
   )
   
-  cat("Test 1 completed with", nrow(result_sim), "rows of data.\n")
+  cat("Test 1 completed with", nrow(result_interp), "rows of data.\n")
   
   # Report data quality metrics
-  if (!is.null(result_sim)) {
+  if (!is.null(result_interp)) {
     cat("\nData quality metrics:\n")
     
     # Find all data quality columns
-    quality_cols <- grep("_data_quality$", names(result_sim), value = TRUE)
+    quality_cols <- grep("_data_quality$", names(result_interp), value = TRUE)
     
     for (qcol in quality_cols[1:min(5, length(quality_cols))]) { # Limit to 5 variables to avoid excessive output
       # Get variable name without suffix
       var_name <- gsub("_data_quality$", "", qcol)
       
       # Count occurrences of each quality flag
-      quality_counts <- table(result_sim[[qcol]], useNA = "ifany")
+      quality_counts <- table(result_interp[[qcol]], useNA = "ifany")
       
       cat(paste0("\n", var_name, ":\n"))
       for (flag in names(quality_counts)) {
@@ -1200,49 +1123,34 @@ if (!is_sourced()) {
     }
   }
   
-  cat("\n----- TEST 2: No simulation, with interpolation -----\n")
-  result_interp <- fetch_usda_food_atlas(
-    years = test_years,
-    cache_dir = "data/cache",
-    refresh_cache = FALSE,
-    allow_simulation = FALSE,
-    allow_interpolation = TRUE,
-    data_quality_flags = data_quality_flags,
-    offline_mode = FALSE
-  )
-  
-  cat("Test 2 completed with", nrow(result_interp), "rows of data.\n")
-  
-  cat("\n----- TEST 3: No simulation, no interpolation -----\n")
+  cat("\n----- TEST 2: No interpolation -----\n")
   result_none <- tryCatch({
     fetch_usda_food_atlas(
       years = test_years,
       cache_dir = "data/cache",
       refresh_cache = FALSE,
-      allow_simulation = FALSE,
       allow_interpolation = FALSE,
       data_quality_flags = data_quality_flags,
       offline_mode = FALSE
     )
   }, error = function(e) {
-    cat("Error as expected with no simulation and no interpolation:", conditionMessage(e), "\n")
+    cat("Error as expected with no interpolation:", conditionMessage(e), "\n")
     return(NULL)
   })
   
   if (!is.null(result_none)) {
-    cat("Test 3 completed with", nrow(result_none), "rows of data.\n")
+    cat("Test 2 completed with", nrow(result_none), "rows of data.\n")
   }
   
-  cat("\n----- TEST 4: Offline mode -----\n")
+  cat("\n----- TEST 3: Offline mode -----\n")
   result_offline <- fetch_usda_food_atlas(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = data_quality_flags,
     offline_mode = TRUE
   )
   
-  cat("Test 4 completed with", nrow(result_offline), "rows of data.\n")
+  cat("Test 3 completed with", nrow(result_offline), "rows of data.\n")
 }

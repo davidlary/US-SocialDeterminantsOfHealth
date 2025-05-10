@@ -1,0 +1,63 @@
+# Example SDOH Pipeline Configuration for Network Storage
+# This file demonstrates how to configure the pipeline to use a network drive for data storage
+
+# Directory Configuration
+directories:
+  # Code root directory (where the R code files are located)
+  # IMPORTANT: Keep this pointing to the code directory, not a network drive
+  root_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R"
+  
+# Network paths for data storage - these override the defaults
+# These paths are for data storage only, not for code
+network_paths:
+  data_dir: "/Volumes/ExternalDrive/SDOH/data"
+  output_dir: "/Volumes/ExternalDrive/SDOH/output"
+  cache_dir: "/Volumes/ExternalDrive/SDOH/data/cache"
+  maps_dir: "/Volumes/ExternalDrive/SDOH/output/maps"
+  visualizations_dir: "/Volumes/ExternalDrive/SDOH/output/visualizations"
+  logs_dir: "/Volumes/ExternalDrive/SDOH/logs"
+
+# Database configuration with network path
+database:
+  db_name: "us_county_sdoh_unified.duckdb"
+  db_path: "/Volumes/ExternalDrive/SDOH/output/us_county_sdoh_unified.duckdb"
+  overwrite_db: false
+  
+# Data refresh options
+data_refresh:
+  refresh_cache: false
+  max_data_age_days: 30
+  
+# Processing options
+processing:
+  parallel: true
+  cores: 8  # Adjust based on your system capabilities
+  min_cores: 2
+  
+# Map generation options
+maps:
+  generate_maps: true
+  conus_only: true
+  
+# Year range for data collection
+years:
+  min_year: 1990  # Reduced year range to minimize storage requirements
+  max_year: 2025
+  
+# Documentation options
+documentation:
+  update_documentation: true
+
+# API credentials (these will be overridden by environment variables if set)
+api_keys:
+  census_api_key: ""
+  
+# IPUMS credentials (these will be overridden by environment variables if set)
+ipums:
+  username: ""
+  password: ""
+
+# Traffic safety data options
+traffic_safety:
+  use_fallback: false
+  data_years: [2020, 2021, 2022]

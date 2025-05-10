@@ -1132,7 +1132,15 @@ if (!interactive()) {
     }
   })
   
-  # Run with default parameters
-  nhgis_data <- fetch_nhgis_historical_data(crosswalk = crosswalk, years = 1970:1999)
+  # Check for offline mode flag
+  args <- commandArgs(trailingOnly = TRUE)
+  offline_mode <- any(grepl("--offline-mode=TRUE", args, ignore.case = TRUE))
+  
+  # Run with default parameters, but respecting offline mode
+  nhgis_data <- fetch_nhgis_historical_data(
+    crosswalk = crosswalk, 
+    years = 1970:1999, 
+    use_ipumsr = !offline_mode
+  )
   cat("Processed", nrow(nhgis_data), "NHGIS data records\n")
 }

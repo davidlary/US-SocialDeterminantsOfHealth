@@ -12,6 +12,63 @@ library(lubridate)
 library(sf)
 library(zoo) # For interpolation if needed
 
+#' Find local social cohesion data files
+#'
+#' Searches multiple directories for social cohesion data files, including
+#' election data from MIT Election Lab and County Health Rankings data.
+#'
+#' @return A list of file paths organized by data type
+find_local_social_cohesion_files <- function() {
+  # List of directories to check
+  social_dirs <- c(
+    "data/social_cohesion",
+    "data/cache/social_cohesion",
+    "data/social",
+    "data/social_capital",
+    "data/elections",
+    "data/chr"
+  )
+  
+  # Also check subdirectories for specific data types
+  for (base_dir in c("data", "data/cache")) {
+    for (subdir in c("elections", "election_data", "chr", "county_health_rankings", "social")) {
+      social_dirs <- c(social_dirs, file.path(base_dir, subdir))
+    }
+  }
+  
+  # List of possible file extensions
+  file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$", "\\.zip$", "\\.txt$", "\\.rds$")
+  
+  # Search for files
+  all_files <- c()
+  for (dir in social_dirs) {
+    if (dir.exists(dir)) {
+      for (ext in file_exts) {
+        files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+        all_files <- c(all_files, files)
+      }
+    }
+  }
+  
+  # Filter for different types of social cohesion data
+  social_files <- list(
+    elections = grep("election|vote|ballot|president|congress|turnout|MIT|harvard", 
+                    all_files, value = TRUE, ignore.case = TRUE),
+    chr = grep("chr|county.*health.*rank|health.*rank|social.*association|social.*connect", 
+              all_files, value = TRUE, ignore.case = TRUE)
+  )
+  
+  # Sort by modification time (newest first)
+  for (type in names(social_files)) {
+    if (length(social_files[[type]]) > 0) {
+      file_info <- file.info(social_files[[type]])
+      social_files[[type]] <- social_files[[type]][order(file_info$mtime, decreasing = TRUE)]
+    }
+  }
+  
+  return(social_files)
+}
+
 #' Fetch social cohesion data
 #'
 #' Retrieves social cohesion data from MIT Election Data and Science Lab,
@@ -20,25 +77,26 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param allow_interpolation Whether to interpolate missing values
 #' @param data_quality_flags List of standardized data quality flags
 #' @param offline_mode Whether to skip all downloads and use only cached data
+#' @param parallel Whether to use parallel processing
+#' @param parallel_config Optional parallel processing configuration
 #' @return A data frame with social cohesion data for all requested years
 fetch_social_cohesion_data <- function(years, 
                                      cache_dir = "data/cache", 
                                      refresh_cache = FALSE,
-                                     allow_simulation = FALSE,
                                      allow_interpolation = TRUE,
                                      data_quality_flags = list(
                                        direct = "direct",
                                        interpolated = "interpolated",
                                        extrapolated = "extrapolated",
-                                       simulated = "simulated",
                                        missing = NA,
                                        imputed = "imputed"
                                      ),
-                                     offline_mode = FALSE) {
+                                     offline_mode = FALSE,
+                                     parallel = FALSE,
+                                     parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -47,6 +105,57 @@ fetch_social_cohesion_data <- function(years,
       message(msg)
     } else {
       cat(msg, "\n")
+    }
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for social cohesion data")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for social cohesion data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
     }
   }
   
@@ -64,8 +173,13 @@ fetch_social_cohesion_data <- function(years,
     
     # Check for empty cache with just placeholder data
     if (nrow(social_data) <= 1 || 
-        (is.data.frame(social_data) && "data_source" %in% names(social_data) && 
-         any(grepl("SIMULATED", social_data$data_source)))) {
+        (is.data.frame(social_data) && 
+         any(sapply(names(social_data), function(col) {
+           if (grepl("_data_source$", col)) {
+             return(any(grepl("SIMULATED|NO_DATA_AVAILABLE", social_data[[col]])))
+           }
+           return(FALSE)
+         })))) {
       print_msg("Cached social cohesion data appears to be empty or a placeholder. Will process files again.")
       # Force refresh by continuing past this point
     } else if (length(missing_years) == 0) {
@@ -112,6 +226,10 @@ fetch_social_cohesion_data <- function(years,
     # MIT Election Lab has county-level election data
     # Data is available for election years
     
+    # Find local election data files
+    local_files <- find_local_social_cohesion_files()
+    election_files <- local_files$elections
+    
     # Define variables we want to extract
     election_variables <- c(
       "voter_turnout_rate" = "Voter turnout rate in general elections",
@@ -139,15 +257,28 @@ fetch_social_cohesion_data <- function(years,
       is_presidential <- year %% 4 == 0
       election_type <- if (is_presidential) "president" else "house"
       
+      # Check for existing files that match this year
+      year_pattern <- paste0("_", year, "\\.")
+      existing_files <- grep(year_pattern, election_files, value = TRUE)
+      
+      # Also check for files that might contain this year in their name
+      more_matches <- grep(paste0(election_type, ".*", year), election_files, value = TRUE)
+      existing_files <- unique(c(existing_files, more_matches))
+      
+      # Default file path if we need to download
       election_file <- file.path(
         data_dir, 
         paste0("election_", election_type, "_", year, ".csv")
       )
       
       # Check if we need to download
-      need_download <- !file.exists(election_file) || refresh_cache
+      need_download <- length(existing_files) == 0 || refresh_cache
       
-      if (need_download) {
+      # Use existing file if available
+      if (length(existing_files) > 0 && !need_download) {
+        election_file <- existing_files[1]  # Use the first (newest) file
+        print_msg(paste("Using existing", election_type, "election file for", year, ":", basename(election_file)))
+      } else if (need_download && !offline_mode) {
         # MIT Election Lab URL
         # Different structure for presidential vs. congressional elections
         if (is_presidential) {
@@ -164,22 +295,83 @@ fetch_social_cohesion_data <- function(years,
           )
         }
         
+        # Make sure the directory exists
+        if (!dir.exists(dirname(election_file))) {
+          dir.create(dirname(election_file), recursive = TRUE)
+        }
+        
         # Try to download
-        if (!safe_download(election_url, election_file, paste(election_type, "election data for", year))) {
+        success <- safe_download(election_url, election_file, paste(election_type, "election data for", year))
+        
+        if (!success) {
           print_msg(paste("Could not download", election_type, "election data for", year))
+          
+          # Try to find any election files for this year or prior years
+          for (y in year:max(2000, year-6)) {  # Try up to 6 years back
+            year_pattern <- paste0("_", y, "\\.|", y, "_")
+            type_pattern <- paste0(if(y %% 4 == 0) "president" else "house")
+            potential_files <- grep(paste0("(", year_pattern, ")|(", type_pattern, ")"), 
+                                   election_files, value = TRUE)
+            
+            if (length(potential_files) > 0) {
+              election_file <- potential_files[1]  # Use the first (newest) file
+              print_msg(paste("No data available for", year, "- using election file from", y, ":", 
+                             basename(election_file)))
+              break
+            }
+          }
+          
+          # If still no files found, skip this year
+          if (!file.exists(election_file)) {
+            print_msg(paste("No election data found for year", year, "or recent prior years"))
+            next
+          }
+        }
+      } else if (offline_mode && need_download) {
+        print_msg(paste("Offline mode: Cannot download", election_type, "election data for", year))
+        
+        # Try to find any election files for this or prior years
+        found_file <- FALSE
+        for (y in year:max(2000, year-6)) {  # Try up to 6 years back
+          year_pattern <- paste0("_", y, "\\.|", y, "_")
+          type_pattern <- paste0(if(y %% 4 == 0) "president" else "house")
+          potential_files <- grep(paste0("(", year_pattern, ")|(", type_pattern, ")"), 
+                                 election_files, value = TRUE)
+          
+          if (length(potential_files) > 0) {
+            election_file <- potential_files[1]  # Use the first (newest) file
+            print_msg(paste("Using available election file from", y, ":", basename(election_file)))
+            found_file <- TRUE
+            break
+          }
+        }
+        
+        if (!found_file) {
+          print_msg(paste("No election data files found for year", year, "or recent prior years"))
           next
         }
-      } else {
-        print_msg(paste("Using existing", election_type, "election file for", year))
       }
       
       # Process the data if file exists
       if (file.exists(election_file)) {
-        print_msg(paste("Reading", election_type, "election data for", year))
+        print_msg(paste("Reading", election_type, "election data for", year, "from", basename(election_file)))
         
         # Read the file
         tryCatch({
-          election_data <- read_csv(election_file, show_col_types = FALSE)
+          # Determine file type and read accordingly
+          file_ext <- tolower(tools::file_ext(election_file))
+          
+          if (file_ext == "csv") {
+            election_data <- read_csv(election_file, show_col_types = FALSE)
+          } else if (file_ext %in% c("xlsx", "xls")) {
+            election_data <- read_excel(election_file)
+          } else if (file_ext == "txt") {
+            # Try to determine delimiter
+            election_data <- read_delim(election_file, delim = "\t", show_col_types = FALSE)
+          } else {
+            print_msg(paste("Unsupported file format for", basename(election_file)))
+            next
+          }
           
           # Get column names
           print_msg(paste("Election data has", ncol(election_data), "columns and", nrow(election_data), "rows"))
@@ -269,6 +461,10 @@ fetch_social_cohesion_data <- function(years,
   get_chr_data <- function() {
     # County Health Rankings has social association data from 2014 onwards
     
+    # Find local CHR data files
+    local_files <- find_local_social_cohesion_files()
+    chr_files <- local_files$chr
+    
     # Define variables we want to extract
     chr_variables <- c(
       "social_association_rate" = "Social associations per 10,000 population",
@@ -288,13 +484,21 @@ fetch_social_cohesion_data <- function(years,
         next
       }
       
-      # Define file paths
+      # Check for existing files that match this year
+      year_pattern <- paste0("chr_", year, "|", year, ".*[Cc]ounty.*[Hh]ealth")
+      existing_files <- grep(year_pattern, chr_files, value = TRUE)
+      
+      # Default file path if we need to download
       chr_file <- file.path(data_dir, paste0("chr_", year, ".csv"))
       
       # Check if we need to download
-      need_download <- !file.exists(chr_file) || refresh_cache
+      need_download <- length(existing_files) == 0 || refresh_cache
       
-      if (need_download) {
+      # Use existing file if available
+      if (length(existing_files) > 0 && !need_download) {
+        chr_file <- existing_files[1]  # Use the first (newest) file
+        print_msg(paste("Using existing County Health Rankings file for", year, ":", basename(chr_file)))
+      } else if (need_download && !offline_mode) {
         # County Health Rankings URL
         chr_url <- paste0(
           "https://www.countyhealthrankings.org/sites/default/files/media/document/",
@@ -302,22 +506,79 @@ fetch_social_cohesion_data <- function(years,
           "%20County%20Health%20Rankings%20Data%20-%20v1.csv"
         )
         
+        # Make sure the directory exists
+        if (!dir.exists(dirname(chr_file))) {
+          dir.create(dirname(chr_file), recursive = TRUE)
+        }
+        
         # Try to download
-        if (!safe_download(chr_url, chr_file, paste("County Health Rankings data for", year))) {
+        success <- safe_download(chr_url, chr_file, paste("County Health Rankings data for", year))
+        
+        if (!success) {
           print_msg(paste("Could not download County Health Rankings data for", year))
+          
+          # Try to find any CHR files for this year or prior years
+          for (y in year:max(2014, year-3)) {  # Try up to 3 years back, no earlier than 2014
+            year_pattern <- paste0("chr_", y, "|", y, ".*[Cc]ounty.*[Hh]ealth")
+            potential_files <- grep(year_pattern, chr_files, value = TRUE)
+            
+            if (length(potential_files) > 0) {
+              chr_file <- potential_files[1]  # Use the first (newest) file
+              print_msg(paste("No data available for", year, "- using CHR file from", y, ":", 
+                              basename(chr_file)))
+              break
+            }
+          }
+          
+          # If still no files found, skip this year
+          if (!file.exists(chr_file)) {
+            print_msg(paste("No County Health Rankings data found for year", year, "or recent prior years"))
+            next
+          }
+        }
+      } else if (offline_mode && need_download) {
+        print_msg(paste("Offline mode: Cannot download County Health Rankings data for", year))
+        
+        # Try to find any CHR files for this or prior years
+        found_file <- FALSE
+        for (y in year:max(2014, year-3)) {  # Try up to 3 years back
+          year_pattern <- paste0("chr_", y, "|", y, ".*[Cc]ounty.*[Hh]ealth")
+          potential_files <- grep(year_pattern, chr_files, value = TRUE)
+          
+          if (length(potential_files) > 0) {
+            chr_file <- potential_files[1]  # Use the first (newest) file
+            print_msg(paste("Using available CHR file from", y, ":", basename(chr_file)))
+            found_file <- TRUE
+            break
+          }
+        }
+        
+        if (!found_file) {
+          print_msg(paste("No County Health Rankings files found for year", year, "or recent prior years"))
           next
         }
-      } else {
-        print_msg(paste("Using existing County Health Rankings file for", year))
       }
       
       # Process the data if file exists
       if (file.exists(chr_file)) {
-        print_msg(paste("Reading County Health Rankings data for", year))
+        print_msg(paste("Reading County Health Rankings data for", year, "from", basename(chr_file)))
         
         # Read the file
         tryCatch({
-          chr_data <- read_csv(chr_file, show_col_types = FALSE)
+          # Determine file type and read accordingly
+          file_ext <- tolower(tools::file_ext(chr_file))
+          
+          if (file_ext == "csv") {
+            chr_data <- read_csv(chr_file, show_col_types = FALSE)
+          } else if (file_ext %in% c("xlsx", "xls")) {
+            chr_data <- read_excel(chr_file)
+          } else if (file_ext == "txt") {
+            # Try to determine delimiter
+            chr_data <- read_delim(chr_file, delim = "\t", show_col_types = FALSE)
+          } else {
+            print_msg(paste("Unsupported file format for", basename(chr_file)))
+            next
+          }
           
           # Get column names
           print_msg(paste("CHR data has", ncol(chr_data), "columns and", nrow(chr_data), "rows"))
@@ -418,19 +679,70 @@ fetch_social_cohesion_data <- function(years,
     }
   }
   
-  # Get data from different sources
-  election_data <- get_election_data()
-  chr_data <- get_chr_data()
-  
-  # Combine all data sources
-  social_data_list <- list()
-  
-  if (!is.null(election_data) && nrow(election_data) > 0) {
-    social_data_list[["election"]] <- election_data
-  }
-  
-  if (!is.null(chr_data) && nrow(chr_data) > 0) {
-    social_data_list[["chr"]] <- chr_data
+  # Get data from different sources - use parallel processing if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+    print_msg("Using parallel processing to fetch data from multiple social cohesion sources")
+    
+    # Define the data sources to fetch
+    data_sources <- c("election", "chr")
+    
+    # Create a function to process one data source
+    process_data_source <- function(source) {
+      print_msg(paste("Processing social cohesion data source:", source))
+      
+      if (source == "election") {
+        return(get_election_data())
+      } else if (source == "chr") {
+        return(get_chr_data())
+      } else {
+        return(NULL)
+      }
+    }
+    
+    # Use future.apply to process data sources in parallel
+    # Set up progress reporting if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      # Create a progress handler
+      progressr::handlers(progressr::handler_progress())
+      
+      # Process with progress tracking
+      social_data_sources <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(data_sources))
+        
+        future.apply::future_lapply(data_sources, function(source) {
+          result <- process_data_source(source)
+          p(message = paste("Processed social cohesion data source:", source))
+          return(result)
+        })
+      })
+    } else {
+      # Process without progress tracking
+      social_data_sources <- future.apply::future_lapply(data_sources, process_data_source)
+    }
+    
+    # Convert results to named list
+    names(social_data_sources) <- data_sources
+    
+    # Filter out NULL results
+    social_data_list <- social_data_sources[!sapply(social_data_sources, is.null)]
+    social_data_list <- social_data_list[sapply(social_data_list, function(x) !is.null(x) && nrow(x) > 0)]
+    
+  } else {
+    # Sequential processing
+    print_msg("Using sequential processing to fetch data from multiple social cohesion sources")
+    election_data <- get_election_data()
+    chr_data <- get_chr_data()
+    
+    # Combine all data sources
+    social_data_list <- list()
+    
+    if (!is.null(election_data) && nrow(election_data) > 0) {
+      social_data_list[["election"]] <- election_data
+    }
+    
+    if (!is.null(chr_data) && nrow(chr_data) > 0) {
+      social_data_list[["chr"]] <- chr_data
+    }
   }
   
   # Process if we have data
@@ -586,10 +898,8 @@ fetch_social_cohesion_data <- function(years,
       # Process each county separately for interpolation
       counties <- unique(combined_social_data$GEOID)
       
-      # List to store interpolated data
-      interp_data_list <- list()
-      
-      for (county in counties) {
+      # Define function to interpolate a single county
+      interpolate_county <- function(county) {
         # Get data for this county
         county_data <- combined_social_data %>%
           filter(GEOID == county) %>%
@@ -666,8 +976,43 @@ fetch_social_cohesion_data <- function(years,
           }
         }
         
-        # Add to list
-        interp_data_list[[county]] <- county_grid
+        return(county_grid)
+      }
+      
+      # Process counties in parallel if enabled
+      interp_data_list <- if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+        print_msg(paste("Using parallel processing for county interpolation with", length(counties), "counties"))
+        
+        # Setup progress tracking if available
+        if (requireNamespace("progressr", quietly = TRUE)) {
+          progressr::handlers(progressr::handler_progress())
+          result_list <- progressr::with_progress({
+            p <- progressr::progressor(steps = length(counties))
+            
+            future.apply::future_lapply(counties, function(county) {
+              result <- interpolate_county(county)
+              p(message = paste("Processed county", county))
+              return(result)
+            })
+          })
+        } else {
+          # No progress tracking
+          result_list <- future.apply::future_lapply(counties, interpolate_county)
+        }
+        
+        # Convert to named list
+        names(result_list) <- counties
+        result_list
+      } else {
+        # Sequential processing
+        print_msg(paste("Using sequential processing for county interpolation with", length(counties), "counties"))
+        result_list <- list()
+        
+        for (county in counties) {
+          result_list[[county]] <- interpolate_county(county)
+        }
+        
+        result_list
       }
       
       # Combine all counties
@@ -704,117 +1049,8 @@ fetch_social_cohesion_data <- function(years,
     print_msg(paste("Cached social cohesion data to:", cache_file))
     
     return(combined_social_data)
-  } else if (allow_simulation) {
-    # Create simulated data
-    print_msg("No social cohesion data found. Creating simulated data...")
-    
-    # Social cohesion variables to simulate
-    social_vars <- c(
-      "voter_turnout_rate" = "Voter turnout rate in general elections",
-      "voter_registration_rate" = "Voter registration as percentage of eligible population",
-      "political_competition_index" = "Index measuring political competition",
-      "social_association_rate" = "Social associations per 10,000 population",
-      "religious_congregation_rate" = "Religious congregations per 10,000 population",
-      "nonprofit_organizations_per_10k" = "Nonprofit organizations per 10,000 population"
-    )
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Election year indicator (for realistic voter turnout in election years)
-      is_election_year <- year %% 2 == 0
-      
-      # Add simulated values for each variable
-      for (var_name in names(social_vars)) {
-        if (var_name == "voter_turnout_rate") {
-          # Higher in presidential election years (divisible by 4),
-          # Medium in midterm years (even but not divisible by 4),
-          # Lower in odd years (no major elections)
-          if (year %% 4 == 0) {
-            # Presidential election year
-            year_data[[var_name]] <- runif(nrow(year_data), 50, 75)
-          } else if (year %% 2 == 0) {
-            # Midterm election year
-            year_data[[var_name]] <- runif(nrow(year_data), 35, 60)
-          } else {
-            # Odd year (local elections only)
-            year_data[[var_name]] <- runif(nrow(year_data), 15, 35)
-          }
-        } else if (var_name == "voter_registration_rate") {
-          # Typically 60-90%
-          year_data[[var_name]] <- runif(nrow(year_data), 60, 90)
-        } else if (var_name == "political_competition_index") {
-          # Typically 0-1 scale, higher means more competitive
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 1)
-        } else if (var_name == "social_association_rate") {
-          # Typically 5-20 per 10,000 population
-          year_data[[var_name]] <- runif(nrow(year_data), 5, 20)
-        } else if (var_name == "religious_congregation_rate") {
-          # Typically 5-25 per 10,000 population
-          year_data[[var_name]] <- runif(nrow(year_data), 5, 25)
-        } else if (var_name == "nonprofit_organizations_per_10k") {
-          # Typically 10-50 per 10,000 population
-          year_data[[var_name]] <- runif(nrow(year_data), 10, 50)
-        } else {
-          # Default - 0-100 range
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Social Cohesion Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated social cohesion data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
+    # No data available - create empty dataset with NAs and proper error messages
     print_msg("No social cohesion data available and simulation not allowed. Creating empty dataset with NAs.")
     
     # Social cohesion variables to include
@@ -898,21 +1134,32 @@ if (!is_sourced()) {
   # Test for last 5 years
   test_years <- (current_year-4):current_year
   
+  # Check for required packages for parallel processing
+  has_parallel_deps <- requireNamespace("future", quietly = TRUE) && 
+                       requireNamespace("future.apply", quietly = TRUE)
+  
+  # Use parallel processing if dependencies are available
+  use_parallel <- has_parallel_deps
+  if (use_parallel) {
+    cat("Using parallel processing for social cohesion data fetching test\n")
+  } else {
+    cat("Parallel processing dependencies not available, using sequential processing\n")
+  }
+  
   # Test the function
   result <- fetch_social_cohesion_data(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = list(
       direct = "direct",
       interpolated = "interpolated",
       extrapolated = "extrapolated",
-      simulated = "simulated",
       missing = NA,
       imputed = "imputed"
-    )
+    ),
+    parallel = use_parallel
   )
   
   # Report data quality metrics

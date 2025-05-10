@@ -1,0 +1,82 @@
+# SDOH Pipeline Configuration
+# This file contains the configuration for the SDOH pipeline
+
+# Directory Configuration
+directories:
+  # Code root directory (where the R code files are located)
+  root_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R"
+  
+  # Data storage directories (all absolute paths for clarity)
+  data_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/data"
+  output_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/output"
+  logs_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/logs"
+  cache_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/data/cache"
+  maps_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/output/maps"
+  visualizations_dir: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/output/visualizations"
+
+# You can specify network drive paths for data storage
+# Example:
+# network_paths:
+#   data_dir: "/Volumes/NetworkDrive/SDOH/data"
+#   output_dir: "/Volumes/NetworkDrive/SDOH/output"
+
+# Database configuration
+database:
+  db_name: "us_county_sdoh_unified.duckdb"
+  db_path: "/Users/davidlary/Dropbox/Environments/Code/GetData/US-SocialDeterminantsOfHealth/R/output/us_county_sdoh_unified.duckdb"
+  overwrite_db: false
+  optimizations:
+    auto_detect_resources: true   # Automatically detect system resources
+    memory_mapped_io: true        # Use memory-mapped I/O for large datasets
+    indices:                      # Indexing strategy
+      strategy: "auto"            # Options: "minimal", "standard", "comprehensive", "advanced", "auto"
+      analyze_tables: true        # Run ANALYZE on tables for query optimization
+    materialized_views:
+      enabled: true               # Use materialized views when sufficient memory is available
+      refresh_on_update: true     # Refresh materialized views when data is updated
+      memory_threshold_gb: 4      # Minimum memory required for materialized views (GB)
+    performance:
+      compression: "auto"         # Options: "none", "light", "medium", "high", "auto"
+      threads: "auto"             # Number of threads or "auto" to detect
+      cache_size_percent: 20      # Percentage of available memory to use for cache
+  
+# Data refresh options
+data_refresh:
+  refresh_cache: false
+  max_data_age_days: 30
+  
+# Processing options
+processing:
+  parallel: true
+  cores: 4  # Set to null to use N-1 cores automatically
+  min_cores: 2
+  incremental: true  # Enable incremental processing (only process new/changed data)
+  force_full_rebuild: false  # Force full reprocessing of all data
+  
+# Map generation options
+maps:
+  generate_maps: true
+  conus_only: true
+  
+# Year range for data collection
+years:
+  min_year: 1970
+  max_year: 2025
+  
+# Documentation options
+documentation:
+  update_documentation: true
+
+# API credentials (these will be overridden by environment variables if set)
+api_keys:
+  census_api_key: "37631d786612af84f997a3c2ff73390376930c39"
+  
+# IPUMS credentials (these will be overridden by environment variables if set)
+ipums:
+  username: "davidlary@me.com"
+  password: "PW-IPUMS-dt10051998!"
+
+# Traffic safety data options
+traffic_safety:
+  use_fallback: false
+  data_years: [2018, 2019, 2020, 2021, 2022, 2023]  # Using all available years

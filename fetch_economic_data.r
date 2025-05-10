@@ -20,7 +20,6 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param allow_interpolation Whether to interpolate missing values
 #' @param data_quality_flags List of standardized data quality flags
 #' @param offline_mode Whether to skip all downloads and use only cached data
@@ -28,17 +27,17 @@ library(zoo) # For interpolation if needed
 fetch_economic_data <- function(years, 
                               cache_dir = "data/cache", 
                               refresh_cache = FALSE,
-                              allow_simulation = FALSE,
                               allow_interpolation = TRUE,
                               data_quality_flags = list(
                                 direct = "direct",
                                 interpolated = "interpolated",
                                 extrapolated = "extrapolated",
-                                simulated = "simulated",
                                 missing = NA,
                                 imputed = "imputed"
                               ),
-                              offline_mode = FALSE) {
+                              offline_mode = FALSE,
+                              parallel = TRUE,
+                              parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -63,9 +62,7 @@ fetch_economic_data <- function(years,
     missing_years <- setdiff(years, cached_years)
     
     # Check for empty cache with just placeholder data
-    if (nrow(economic_data) <= 1 || 
-        (is.data.frame(economic_data) && "data_source" %in% names(economic_data) && 
-         any(grepl("SIMULATED", economic_data$data_source)))) {
+    if (nrow(economic_data) <= 1) {
       print_msg("Cached economic data appears to be empty or a placeholder. Will process files again.")
       # Force refresh by continuing past this point
     } else if (length(missing_years) == 0) {
@@ -82,11 +79,96 @@ fetch_economic_data <- function(years,
     print_msg(paste("Created cache directory at:", cache_dir))
   }
   
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for economic data with adaptive strategy")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for economic data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
+    }
+  }
+  
   # Make data directory if needed
   data_dir <- "data/economic"
   if (!dir.exists(data_dir)) {
     dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
     print_msg(paste("Created economic data directory at:", data_dir))
+  }
+  
+  # Function to check for local economic data files
+  find_local_economic_files <- function() {
+    # List of directories to check
+    economic_dirs <- c(
+      "data/economic",
+      "data/cache/economic",
+      "data/econ"
+    )
+    
+    # List of possible file extensions
+    file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$")
+    
+    # Search for files
+    all_files <- c()
+    for (dir in economic_dirs) {
+      if (dir.exists(dir)) {
+        for (ext in file_exts) {
+          files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+          all_files <- c(all_files, files)
+        }
+      }
+    }
+    
+    # Filter for different types of economic data
+    economic_files <- list(
+      ers = grep("ers|usda|typology|employment", all_files, value = TRUE, ignore.case = TRUE),
+      bls = grep("bls|labor|employment|jobs", all_files, value = TRUE, ignore.case = TRUE),
+      opportunity = grep("opportunity|mobility|atlas", all_files, value = TRUE, ignore.case = TRUE),
+      acs = grep("acs|inequality|gini", all_files, value = TRUE, ignore.case = TRUE)
+    )
+    
+    return(economic_files)
   }
   
   # Helper function to safely download and read files
@@ -119,22 +201,101 @@ fetch_economic_data <- function(years,
       "persistent_child_poverty_county" = "Flag for counties with persistent child poverty"
     )
     
-    # County Typology Codes
-    typology_file <- file.path(data_dir, "county_typology.csv")
+    # Check for local files first
+    local_files <- find_local_economic_files()
+    ers_files <- local_files$ers
     
-    # Check if we need to download
-    need_download <- !file.exists(typology_file) || refresh_cache
-    
-    if (need_download) {
-      # USDA ERS county typology URL
-      typology_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48652/2015CountyTypologyCodes.csv"
+    if (length(ers_files) > 0) {
+      print_msg(paste("Found", length(ers_files), "local ERS data files"))
       
-      # Try to download
-      if (!safe_download(typology_url, typology_file, "USDA ERS County Typology")) {
-        print_msg("Could not download USDA ERS County Typology data")
+      # Look for typology and employment files
+      typology_file <- grep("typology|type", ers_files, value = TRUE)[1]
+      employment_file <- grep("employ|job|labor", ers_files, value = TRUE)[1]
+      
+      if (!is.na(typology_file)) {
+        print_msg(paste("Using local typology file:", basename(typology_file)))
+      } else {
+        # County Typology Codes
+        typology_file <- file.path(data_dir, "county_typology.csv")
+        
+        # Check if we need to download
+        need_download <- !file.exists(typology_file) || refresh_cache
+        
+        if (need_download) {
+          # USDA ERS county typology URL
+          typology_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48652/2015CountyTypologyCodes.csv"
+          
+          # Try to download
+          if (!safe_download(typology_url, typology_file, "USDA ERS County Typology")) {
+            print_msg("Could not download USDA ERS County Typology data")
+          }
+        } else {
+          print_msg("Using existing USDA ERS County Typology file")
+        }
+      }
+      
+      if (!is.na(employment_file)) {
+        print_msg(paste("Using local employment file:", basename(employment_file)))
+      } else {
+        # Employment data
+        # For employment volatility and other metrics
+        employment_file <- file.path(data_dir, "county_employment.csv")
+        
+        # Check if we need to download
+        need_download <- !file.exists(employment_file) || refresh_cache
+        
+        if (need_download) {
+          # USDA ERS unemployment data URL
+          emp_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48747/Unemployment.csv"
+          
+          # Try to download
+          if (!safe_download(emp_url, employment_file, "USDA ERS Unemployment Data")) {
+            print_msg("Could not download USDA ERS Unemployment data")
+          }
+        } else {
+          print_msg("Using existing USDA ERS Unemployment file")
+        }
       }
     } else {
-      print_msg("Using existing USDA ERS County Typology file")
+      # No local files found, try to download
+      print_msg("No local ERS files found, attempting to download")
+      
+      # County Typology Codes
+      typology_file <- file.path(data_dir, "county_typology.csv")
+      
+      # Check if we need to download
+      need_download <- !file.exists(typology_file) || refresh_cache
+      
+      if (need_download) {
+        # USDA ERS county typology URL
+        typology_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48652/2015CountyTypologyCodes.csv"
+        
+        # Try to download
+        if (!safe_download(typology_url, typology_file, "USDA ERS County Typology")) {
+          print_msg("Could not download USDA ERS County Typology data")
+        }
+      } else {
+        print_msg("Using existing USDA ERS County Typology file")
+      }
+      
+      # Employment data
+      # For employment volatility and other metrics
+      employment_file <- file.path(data_dir, "county_employment.csv")
+      
+      # Check if we need to download
+      need_download <- !file.exists(employment_file) || refresh_cache
+      
+      if (need_download) {
+        # USDA ERS unemployment data URL
+        emp_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48747/Unemployment.csv"
+        
+        # Try to download
+        if (!safe_download(emp_url, employment_file, "USDA ERS Unemployment Data")) {
+          print_msg("Could not download USDA ERS Unemployment data")
+        }
+      } else {
+        print_msg("Using existing USDA ERS Unemployment file")
+      }
     }
     
     # Process the typology data if file exists
@@ -144,7 +305,15 @@ fetch_economic_data <- function(years,
       
       # Read the file
       tryCatch({
-        typology_data <- read_csv(typology_file, show_col_types = FALSE)
+        # Determine file type
+        if (grepl("\\.csv$", typology_file, ignore.case = TRUE)) {
+          typology_data <- read_csv(typology_file, show_col_types = FALSE)
+        } else if (grepl("\\.xlsx$|\\.xls$", typology_file, ignore.case = TRUE)) {
+          typology_data <- read_excel(typology_file)
+        } else {
+          print_msg(paste("Unsupported file format:", typology_file))
+          return(NULL)
+        }
         
         # Get column names
         print_msg(paste("Typology data has", ncol(typology_data), "columns and", nrow(typology_data), "rows"))
@@ -176,33 +345,22 @@ fetch_economic_data <- function(years,
       })
     }
     
-    # Employment data
-    # For employment volatility and other metrics
-    emp_file <- file.path(data_dir, "county_employment.csv")
-    
-    # Check if we need to download
-    need_download <- !file.exists(emp_file) || refresh_cache
-    
-    if (need_download) {
-      # USDA ERS unemployment data URL
-      emp_url <- "https://www.ers.usda.gov/webdocs/DataFiles/48747/Unemployment.csv"
-      
-      # Try to download
-      if (!safe_download(emp_url, emp_file, "USDA ERS Unemployment Data")) {
-        print_msg("Could not download USDA ERS Unemployment data")
-      }
-    } else {
-      print_msg("Using existing USDA ERS Unemployment file")
-    }
-    
     # Process the employment data if file exists
     emp_data <- NULL
-    if (file.exists(emp_file)) {
+    if (file.exists(employment_file)) {
       print_msg("Reading USDA ERS Employment data")
       
       # Read the file
       tryCatch({
-        emp_data <- read_csv(emp_file, show_col_types = FALSE)
+        # Determine file type
+        if (grepl("\\.csv$", employment_file, ignore.case = TRUE)) {
+          emp_data <- read_csv(employment_file, show_col_types = FALSE)
+        } else if (grepl("\\.xlsx$|\\.xls$", employment_file, ignore.case = TRUE)) {
+          emp_data <- read_excel(employment_file)
+        } else {
+          print_msg(paste("Unsupported file format:", employment_file))
+          return(NULL)
+        }
         
         # Get column names
         print_msg(paste("Employment data has", ncol(emp_data), "columns and", nrow(emp_data), "rows"))
@@ -346,104 +504,189 @@ fetch_economic_data <- function(years,
       "job_growth_rate" = "Annual job growth rate"
     )
     
+    # Check for local files first
+    local_files <- find_local_economic_files()
+    bls_files <- local_files$bls
+    
     # BLS LAUS data list to store results
     bls_data_list <- list()
     
-    # Process each year
-    for (year in years) {
-      # Skip future years
-      if (year > as.integer(format(Sys.Date(), "%Y"))) {
-        next
-      }
+    if (length(bls_files) > 0) {
+      print_msg(paste("Found", length(bls_files), "local BLS data files"))
       
-      # Define file paths
-      bls_file <- file.path(data_dir, paste0("bls_laus_", year, ".csv"))
-      
-      # Check if we need to download
-      need_download <- !file.exists(bls_file) || refresh_cache
-      
-      if (need_download) {
-        # BLS LAUS URL
-        # Note: BLS data requires API key for bulk downloads, this is simplified
-        # Real implementation would use BLS API with proper key
-        bls_url <- paste0(
-          "https://download.bls.gov/pub/time.series/la/la.data.", year, ".csv"
-        )
+      # Process each local file
+      for (file in bls_files) {
+        print_msg(paste("Processing local BLS file:", basename(file)))
         
-        # Try to download
-        if (!safe_download(bls_url, bls_file, paste("BLS LAUS data for", year))) {
-          print_msg(paste("Could not download BLS LAUS data for", year))
+        # Try to extract year from filename
+        year_match <- regexpr("(19|20)[0-9]{2}", basename(file))
+        file_year <- NULL
+        if (year_match > 0) {
+          file_year <- as.integer(substr(basename(file), year_match, year_match + 3))
+          print_msg(paste("Extracted year:", file_year))
+        }
+        
+        # Skip if we can't determine year or it's not in requested years
+        if (is.null(file_year) || !(file_year %in% years)) {
           next
         }
-      } else {
-        print_msg(paste("Using existing BLS LAUS file for", year))
-      }
-      
-      # Process the data if file exists
-      if (file.exists(bls_file)) {
-        print_msg(paste("Reading BLS LAUS data for", year))
         
-        # Read the file
+        # Try to read file
         tryCatch({
-          # BLS files can be large, use optimizations
-          bls_data <- read_csv(
-            bls_file, 
-            show_col_types = FALSE,
-            guess_max = 10000
-          )
-          
-          # Get column names
-          print_msg(paste("BLS data has", ncol(bls_data), "columns and", nrow(bls_data), "rows"))
-          
-          # BLS LAUS data is complex and needs special processing
-          # This is a simplified example of how it might work
-          # A full implementation would require careful parsing of BLS series codes
-          
-          # Check if this has county-level data
-          # BLS uses series IDs which include geographic codes
-          series_col <- grep("series|Series|SERIES", names(bls_data), value = TRUE)[1]
-          
-          if (is.na(series_col)) {
-            print_msg("Could not identify series column in BLS data")
+          # Determine file type
+          if (grepl("\\.csv$", file, ignore.case = TRUE)) {
+            file_data <- read_csv(file, show_col_types = FALSE, guess_max = 10000)
+          } else if (grepl("\\.xlsx$|\\.xls$", file, ignore.case = TRUE)) {
+            file_data <- read_excel(file)
+          } else {
+            print_msg(paste("Unsupported file format:", file))
             next
           }
           
-          # Filter to county-level series (usually starts with LAU)
-          county_series <- bls_data %>%
-            filter(grepl("^LAU", .data[[series_col]]))
-          
-          if (nrow(county_series) == 0) {
-            print_msg("No county-level series found in BLS data")
+          # Check if file has usable data
+          if (nrow(file_data) == 0) {
+            print_msg("File has no data rows, skipping.")
             next
           }
           
-          # Extract FIPS codes from series IDs
-          # This is highly dependent on BLS series ID structure
-          # A real implementation would need specific logic
+          # Check for FIPS/GEOID column
+          geoid_col <- grep("FIPS|fips|geoid|GEOID|county.*code|COUNTY.*CODE", 
+                           names(file_data), value = TRUE)[1]
           
-          # For this example, create a simplified dataset
+          if (is.na(geoid_col)) {
+            print_msg("Could not identify GEOID column in BLS data file, skipping.")
+            next
+          }
+          
+          # Rename and format GEOID
+          file_data <- file_data %>%
+            rename(GEOID = all_of(geoid_col)) %>%
+            mutate(GEOID = sprintf("%05d", as.numeric(GEOID)))
+          
+          # Find job growth rate column
+          growth_col <- grep("growth|Growth|change|Change", names(file_data), value = TRUE)[1]
+          
+          # Create data frame for this year
           year_data <- data.frame(
-            GEOID = rep(NA, nrow(county_series)),
-            year = year
+            GEOID = file_data$GEOID,
+            year = file_year
           )
           
           # Add job growth rate if available
-          growth_col <- grep("growth|Growth|change|Change", names(county_series), value = TRUE)[1]
-          
           if (!is.na(growth_col)) {
-            year_data$job_growth_rate <- county_series[[growth_col]]
+            year_data$job_growth_rate <- file_data[[growth_col]]
             year_data$job_growth_rate_data_quality <- data_quality_flags$direct
             year_data$job_growth_rate_data_source <- "Bureau of Labor Statistics"
-            year_data$job_growth_rate_data_vintage <- as.character(year)
+            year_data$job_growth_rate_data_vintage <- as.character(file_year)
           }
           
           # Add to list
-          bls_data_list[[as.character(year)]] <- year_data
+          bls_data_list[[as.character(file_year)]] <- year_data
           
-          print_msg(paste("Processed BLS LAUS data for", year))
         }, error = function(e) {
-          print_msg(paste("Error reading BLS LAUS data for", year, ":", conditionMessage(e)))
+          print_msg(paste("Error processing file", basename(file), ":", 
+                        conditionMessage(e)))
         })
+      }
+    } else {
+      print_msg("No local BLS files found, attempting to download")
+      
+      # Process each year
+      for (year in years) {
+        # Skip future years
+        if (year > as.integer(format(Sys.Date(), "%Y"))) {
+          next
+        }
+        
+        # Define file paths
+        bls_file <- file.path(data_dir, paste0("bls_laus_", year, ".csv"))
+        
+        # Check if we need to download
+        need_download <- !file.exists(bls_file) || refresh_cache
+        
+        if (need_download) {
+          # BLS LAUS URL
+          # Note: BLS data requires API key for bulk downloads, this is simplified
+          # Real implementation would use BLS API with proper key
+          bls_url <- paste0(
+            "https://download.bls.gov/pub/time.series/la/la.data.", year, ".csv"
+          )
+          
+          # Try to download
+          if (!safe_download(bls_url, bls_file, paste("BLS LAUS data for", year))) {
+            print_msg(paste("Could not download BLS LAUS data for", year))
+            next
+          }
+        } else {
+          print_msg(paste("Using existing BLS LAUS file for", year))
+        }
+        
+        # Process the data if file exists
+        if (file.exists(bls_file)) {
+          print_msg(paste("Reading BLS LAUS data for", year))
+          
+          # Read the file
+          tryCatch({
+            # BLS files can be large, use optimizations
+            bls_data <- read_csv(
+              bls_file, 
+              show_col_types = FALSE,
+              guess_max = 10000
+            )
+            
+            # Get column names
+            print_msg(paste("BLS data has", ncol(bls_data), "columns and", nrow(bls_data), "rows"))
+            
+            # BLS LAUS data is complex and needs special processing
+            # This is a simplified example of how it might work
+            # A full implementation would require careful parsing of BLS series codes
+            
+            # Check if this has county-level data
+            # BLS uses series IDs which include geographic codes
+            series_col <- grep("series|Series|SERIES", names(bls_data), value = TRUE)[1]
+            
+            if (is.na(series_col)) {
+              print_msg("Could not identify series column in BLS data")
+              next
+            }
+            
+            # Filter to county-level series (usually starts with LAU)
+            county_series <- bls_data %>%
+              filter(grepl("^LAU", .data[[series_col]]))
+            
+            if (nrow(county_series) == 0) {
+              print_msg("No county-level series found in BLS data")
+              next
+            }
+            
+            # Extract FIPS codes from series IDs
+            # This is highly dependent on BLS series ID structure
+            # A real implementation would need specific logic
+            
+            # For this example, create a simplified dataset
+            year_data <- data.frame(
+              GEOID = rep(NA, nrow(county_series)),
+              year = year
+            )
+            
+            # Add job growth rate if available
+            growth_col <- grep("growth|Growth|change|Change", names(county_series), value = TRUE)[1]
+            
+            if (!is.na(growth_col)) {
+              year_data$job_growth_rate <- county_series[[growth_col]]
+              year_data$job_growth_rate_data_quality <- data_quality_flags$direct
+              year_data$job_growth_rate_data_source <- "Bureau of Labor Statistics"
+              year_data$job_growth_rate_data_vintage <- as.character(year)
+            }
+            
+            # Add to list
+            bls_data_list[[as.character(year)]] <- year_data
+            
+            print_msg(paste("Processed BLS LAUS data for", year))
+          }, error = function(e) {
+            print_msg(paste("Error reading BLS LAUS data for", year, ":", conditionMessage(e)))
+          })
+        }
       }
     }
     
@@ -470,22 +713,36 @@ fetch_economic_data <- function(years,
       "job_density_index" = "Number of jobs within typical commute distance"
     )
     
-    # Opportunity Atlas data file
-    opportunity_file <- file.path(data_dir, "opportunity_atlas.csv")
+    # Check for local files first
+    local_files <- find_local_economic_files()
+    opportunity_files <- local_files$opportunity
     
-    # Check if we need to download
-    need_download <- !file.exists(opportunity_file) || refresh_cache
-    
-    if (need_download) {
-      # Opportunity Insights URL
-      opportunity_url <- "https://opportunityinsights.org/wp-content/uploads/2018/10/county_outcomes.csv"
-      
-      # Try to download
-      if (!safe_download(opportunity_url, opportunity_file, "Opportunity Insights data")) {
-        print_msg("Could not download Opportunity Insights data")
-      }
+    if (length(opportunity_files) > 0) {
+      print_msg(paste("Found", length(opportunity_files), "local Opportunity Insights data files"))
+      opportunity_file <- opportunity_files[1]
+      print_msg(paste("Using local Opportunity Insights file:", basename(opportunity_file)))
     } else {
-      print_msg("Using existing Opportunity Insights file")
+      # No local files found, try to download
+      print_msg("No local Opportunity Insights files found, attempting to download")
+      
+      # Opportunity Atlas data file
+      opportunity_file <- file.path(data_dir, "opportunity_atlas.csv")
+      
+      # Check if we need to download
+      need_download <- !file.exists(opportunity_file) || refresh_cache
+      
+      if (need_download) {
+        # Opportunity Insights URL
+        opportunity_url <- "https://opportunityinsights.org/wp-content/uploads/2018/10/county_outcomes.csv"
+        
+        # Try to download
+        if (!safe_download(opportunity_url, opportunity_file, "Opportunity Insights data")) {
+          print_msg("Could not download Opportunity Insights data")
+          return(NULL)
+        }
+      } else {
+        print_msg("Using existing Opportunity Insights file")
+      }
     }
     
     # Process the data if file exists
@@ -495,7 +752,15 @@ fetch_economic_data <- function(years,
       
       # Read the file
       tryCatch({
-        opportunity_data <- read_csv(opportunity_file, show_col_types = FALSE)
+        # Determine file type
+        if (grepl("\\.csv$", opportunity_file, ignore.case = TRUE)) {
+          opportunity_data <- read_csv(opportunity_file, show_col_types = FALSE)
+        } else if (grepl("\\.xlsx$|\\.xls$", opportunity_file, ignore.case = TRUE)) {
+          opportunity_data <- read_excel(opportunity_file)
+        } else {
+          print_msg(paste("Unsupported file format:", opportunity_file))
+          return(NULL)
+        }
         
         # Get column names
         print_msg(paste("Opportunity data has", ncol(opportunity_data), "columns and", nrow(opportunity_data), "rows"))
@@ -616,83 +881,164 @@ fetch_economic_data <- function(years,
       "income_inequality_ratio" = "Ratio of income at 80th percentile to income at 20th percentile"
     )
     
+    # Check for local files first
+    local_files <- find_local_economic_files()
+    acs_files <- local_files$acs
+    
     # ACS data list to store results
     acs_data_list <- list()
     
-    # Process each year
-    for (year in years) {
-      # Skip years before ACS started (2005+) and future years
-      if (year < 2005 || year > as.integer(format(Sys.Date(), "%Y"))) {
-        next
-      }
+    if (length(acs_files) > 0) {
+      print_msg(paste("Found", length(acs_files), "local ACS inequality data files"))
       
-      # Define file paths
-      acs_file <- file.path(data_dir, paste0("acs_inequality_", year, ".csv"))
-      
-      # Check if we need to download
-      need_download <- !file.exists(acs_file) || refresh_cache
-      
-      if (need_download) {
-        # Census API would be used in a real implementation
-        # This would require a Census API key and proper queries
-        # For this example, we'll simulate the data structure
+      # Process each local file
+      for (file in acs_files) {
+        print_msg(paste("Processing local ACS file:", basename(file)))
         
-        print_msg(paste("ACS inequality data file not found for", year))
-        # No automatic download option for ACS without API key
-        next
-      } else {
-        print_msg(paste("Using existing ACS inequality file for", year))
-      }
-      
-      # Process the data if file exists
-      if (file.exists(acs_file)) {
-        print_msg(paste("Reading ACS inequality data for", year))
+        # Try to extract year from filename
+        year_match <- regexpr("(19|20)[0-9]{2}", basename(file))
+        file_year <- NULL
+        if (year_match > 0) {
+          file_year <- as.integer(substr(basename(file), year_match, year_match + 3))
+          print_msg(paste("Extracted year:", file_year))
+        }
         
-        # Read the file
+        # Skip if we can't determine year or it's not in requested years
+        if (is.null(file_year) || !(file_year %in% years)) {
+          next
+        }
+        
+        # Skip years before ACS started (2005+)
+        if (file_year < 2005) {
+          print_msg(paste("Skipping year", file_year, "- ACS data starts from 2005"))
+          next
+        }
+        
+        # Try to read file
         tryCatch({
-          acs_data <- read_csv(acs_file, show_col_types = FALSE)
+          # Determine file type
+          if (grepl("\\.csv$", file, ignore.case = TRUE)) {
+            file_data <- read_csv(file, show_col_types = FALSE)
+          } else if (grepl("\\.xlsx$|\\.xls$", file, ignore.case = TRUE)) {
+            file_data <- read_excel(file)
+          } else {
+            print_msg(paste("Unsupported file format:", file))
+            next
+          }
           
-          # Get column names
-          print_msg(paste("ACS data has", ncol(acs_data), "columns and", nrow(acs_data), "rows"))
+          # Check if file has usable data
+          if (nrow(file_data) == 0) {
+            print_msg("File has no data rows, skipping.")
+            next
+          }
           
-          # Check for GEOID column
-          geoid_col <- grep("GEOID|geoid|fips|FIPS", names(acs_data), value = TRUE)[1]
+          # Check for FIPS/GEOID column
+          geoid_col <- grep("FIPS|fips|geoid|GEOID|county.*code|COUNTY.*CODE", 
+                           names(file_data), value = TRUE)[1]
           
           if (is.na(geoid_col)) {
-            print_msg("Could not identify GEOID column in ACS data")
+            print_msg("Could not identify GEOID column in ACS inequality file, skipping.")
             next
           }
           
           # Rename and format GEOID
-          acs_data <- acs_data %>%
+          file_data <- file_data %>%
             rename(GEOID = all_of(geoid_col)) %>%
             mutate(GEOID = sprintf("%05d", as.numeric(GEOID)))
           
-          # Look for inequality ratio column
-          inequality_col <- grep("inequality|Inequality|gini|Gini|ratio|Ratio", names(acs_data), value = TRUE)[1]
+          # Find inequality ratio column
+          inequality_col <- grep("inequality|Inequality|gini|Gini|ratio|Ratio", 
+                                names(file_data), value = TRUE)[1]
           
-          if (is.na(inequality_col)) {
-            print_msg("Could not identify inequality column in ACS data")
-            next
-          }
-          
-          # Create data for this year
+          # Create data frame for this year
           year_data <- data.frame(
-            GEOID = acs_data$GEOID,
-            year = year,
-            income_inequality_ratio = acs_data[[inequality_col]],
-            income_inequality_ratio_data_quality = data_quality_flags$direct,
-            income_inequality_ratio_data_source = "American Community Survey",
-            income_inequality_ratio_data_vintage = as.character(year)
+            GEOID = file_data$GEOID,
+            year = file_year
           )
           
-          # Add to list
-          acs_data_list[[as.character(year)]] <- year_data
+          # Add inequality ratio if available
+          if (!is.na(inequality_col)) {
+            year_data$income_inequality_ratio <- file_data[[inequality_col]]
+            year_data$income_inequality_ratio_data_quality <- data_quality_flags$direct
+            year_data$income_inequality_ratio_data_source <- "American Community Survey"
+            year_data$income_inequality_ratio_data_vintage <- as.character(file_year)
+          }
           
-          print_msg(paste("Processed ACS inequality data for", year))
+          # Add to list
+          acs_data_list[[as.character(file_year)]] <- year_data
+          
         }, error = function(e) {
-          print_msg(paste("Error reading ACS inequality data for", year, ":", conditionMessage(e)))
+          print_msg(paste("Error processing file", basename(file), ":", 
+                        conditionMessage(e)))
         })
+      }
+    } else {
+      print_msg("No local ACS inequality files found, checking file paths")
+      
+      # Process each year
+      for (year in years) {
+        # Skip years before ACS started (2005+) and future years
+        if (year < 2005 || year > as.integer(format(Sys.Date(), "%Y"))) {
+          next
+        }
+        
+        # Define file paths
+        acs_file <- file.path(data_dir, paste0("acs_inequality_", year, ".csv"))
+        
+        # Check if we have the file
+        if (file.exists(acs_file)) {
+          print_msg(paste("Found ACS inequality file for", year))
+          
+          # Read the file
+          tryCatch({
+            acs_data <- read_csv(acs_file, show_col_types = FALSE)
+            
+            # Get column names
+            print_msg(paste("ACS data has", ncol(acs_data), "columns and", nrow(acs_data), "rows"))
+            
+            # Check for GEOID column
+            geoid_col <- grep("GEOID|geoid|fips|FIPS", names(acs_data), value = TRUE)[1]
+            
+            if (is.na(geoid_col)) {
+              print_msg("Could not identify GEOID column in ACS data")
+              next
+            }
+            
+            # Rename and format GEOID
+            acs_data <- acs_data %>%
+              rename(GEOID = all_of(geoid_col)) %>%
+              mutate(GEOID = sprintf("%05d", as.numeric(GEOID)))
+            
+            # Look for inequality ratio column
+            inequality_col <- grep("inequality|Inequality|gini|Gini|ratio|Ratio", names(acs_data), value = TRUE)[1]
+            
+            if (is.na(inequality_col)) {
+              print_msg("Could not identify inequality column in ACS data")
+              next
+            }
+            
+            # Create data for this year
+            year_data <- data.frame(
+              GEOID = acs_data$GEOID,
+              year = year,
+              income_inequality_ratio = acs_data[[inequality_col]],
+              income_inequality_ratio_data_quality = data_quality_flags$direct,
+              income_inequality_ratio_data_source = "American Community Survey",
+              income_inequality_ratio_data_vintage = as.character(year)
+            )
+            
+            # Add to list
+            acs_data_list[[as.character(year)]] <- year_data
+            
+            print_msg(paste("Processed ACS inequality data for", year))
+          }, error = function(e) {
+            print_msg(paste("Error reading ACS inequality data for", year, ":", conditionMessage(e)))
+          })
+        } else {
+          print_msg(paste("No ACS inequality data file found for", year))
+          # Note: Census API would be used in a real implementation
+          # This would require a Census API key and proper queries
+        }
       }
     }
     
@@ -707,11 +1053,78 @@ fetch_economic_data <- function(years,
     }
   }
   
-  # Get data from different sources
-  ers_data <- get_ers_data()
-  bls_data <- get_bls_data()
-  opportunity_data <- get_opportunity_data()
-  acs_inequality_data <- get_acs_inequality_data()
+  # Get data from different sources - use parallel processing if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+    print_msg("Using parallel processing to fetch data from multiple sources")
+    
+    # Define the data sources to fetch
+    data_sources <- c("ers", "bls", "opportunity", "acs_inequality")
+    
+    # Create a function to process one data source
+    process_data_source <- function(source) {
+      print_msg(paste("Processing data source:", source))
+      
+      if (source == "ers") {
+        return(get_ers_data())
+      } else if (source == "bls") {
+        return(get_bls_data())
+      } else if (source == "opportunity") {
+        return(get_opportunity_data())
+      } else if (source == "acs_inequality") {
+        return(get_acs_inequality_data())
+      } else {
+        return(NULL)
+      }
+    }
+    
+    # Set up progress reporting if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      # Create a progress handler
+      progressr::handlers(progressr::handler_progress())
+      
+      # Process with progress tracking
+      results <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(data_sources))
+        
+        future.apply::future_lapply(data_sources, function(source) {
+          result <- process_data_source(source)
+          p(message = paste("Processed data source:", source))
+          return(list(source = source, data = result))
+        })
+      })
+    } else {
+      # Process without progress tracking
+      results <- future.apply::future_lapply(data_sources, function(source) {
+        result <- process_data_source(source)
+        return(list(source = source, data = result))
+      })
+    }
+    
+    # Extract results into their respective variables
+    ers_data <- NULL
+    bls_data <- NULL
+    opportunity_data <- NULL
+    acs_inequality_data <- NULL
+    
+    for (result in results) {
+      if (result$source == "ers") {
+        ers_data <- result$data
+      } else if (result$source == "bls") {
+        bls_data <- result$data
+      } else if (result$source == "opportunity") {
+        opportunity_data <- result$data
+      } else if (result$source == "acs_inequality") {
+        acs_inequality_data <- result$data
+      }
+    }
+  } else {
+    # Sequential processing
+    print_msg("Using sequential processing to fetch data from multiple sources")
+    ers_data <- get_ers_data()
+    bls_data <- get_bls_data()
+    opportunity_data <- get_opportunity_data()
+    acs_inequality_data <- get_acs_inequality_data()
+  }
   
   # Combine all data sources
   economic_data_list <- list()
@@ -976,122 +1389,9 @@ fetch_economic_data <- function(years,
     print_msg(paste("Cached economic data to:", cache_file))
     
     return(combined_economic_data)
-  } else if (allow_simulation) {
-    # Create simulated data
-    print_msg("No economic data found. Creating simulated data...")
-    
-    # Economic variables to simulate
-    economic_vars <- c(
-      "employment_volatility_index" = "Index of employment stability/volatility",
-      "job_growth_rate" = "Annual job growth rate",
-      "income_inequality_ratio" = "Ratio of income at 80th percentile to income at 20th percentile",
-      "economic_typology" = "County economic typology",
-      "persistent_poverty_county" = "Flag for counties with persistent poverty",
-      "persistent_child_poverty_county" = "Flag for counties with persistent child poverty",
-      "economic_distress_index" = "Composite index of economic distress",
-      "income_mobility_index" = "Measure of intergenerational economic mobility",
-      "absolute_upward_mobility" = "Expected income rank for children from low-income families",
-      "mean_commute_distance" = "Average commute distance",
-      "job_density_index" = "Number of jobs within typical commute distance"
-    )
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Add simulated values for each variable
-      for (var_name in names(economic_vars)) {
-        if (var_name == "employment_volatility_index") {
-          # Typically 0-10 scale
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 10)
-        } else if (var_name == "job_growth_rate") {
-          # Typically -5% to +10%
-          year_data[[var_name]] <- runif(nrow(year_data), -5, 10)
-        } else if (var_name == "income_inequality_ratio") {
-          # Typically 3-8 range
-          year_data[[var_name]] <- runif(nrow(year_data), 3, 8)
-        } else if (var_name == "economic_typology") {
-          # Categorical: farming, manufacturing, etc.
-          types <- c("Farming", "Manufacturing", "Mining", "Government", "Recreation", "Nonspecialized")
-          year_data[[var_name]] <- sample(types, nrow(year_data), replace = TRUE)
-        } else if (var_name == "persistent_poverty_county" || var_name == "persistent_child_poverty_county") {
-          # Binary: 0/1
-          year_data[[var_name]] <- sample(c(0, 1), nrow(year_data), replace = TRUE, prob = c(0.85, 0.15))
-        } else if (var_name == "economic_distress_index") {
-          # Typically 0-100 scale
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        } else if (var_name == "income_mobility_index") {
-          # Typically 0-100 scale
-          year_data[[var_name]] <- runif(nrow(year_data), 20, 80)
-        } else if (var_name == "absolute_upward_mobility") {
-          # Typically 30-60 range (percentile)
-          year_data[[var_name]] <- runif(nrow(year_data), 30, 60)
-        } else if (var_name == "mean_commute_distance") {
-          # Typically 5-30 miles
-          year_data[[var_name]] <- runif(nrow(year_data), 5, 30)
-        } else if (var_name == "job_density_index") {
-          # Typically wide range, e.g., 0-5000
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 5000)
-        } else {
-          # Default - 0-100 range
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Economic Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated economic data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
-    print_msg("No economic data available and simulation not allowed. Creating empty dataset with NAs.")
+    # No data available - create empty dataset with proper structure
+    print_msg("No economic data found. Creating empty dataset with proper structure.")
     
     # Economic variables to include
     economic_vars <- c(
@@ -1108,8 +1408,7 @@ fetch_economic_data <- function(years,
       "job_density_index"
     )
     
-    # Get county list using get_county_list() or fallback to sample counties
-    # Try to get a comprehensive list if possible
+    # Try to get a county list if possible
     counties <- NULL
     tryCatch({
       # Check if we're running in a pipeline environment with get_county_list
@@ -1123,14 +1422,12 @@ fetch_economic_data <- function(years,
     
     # Fallback if counties is still NULL
     if (is.null(counties)) {
-      # Sample counties
+      # Create a placeholder with a few counties
       counties <- data.frame(
-        GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-        NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-                "Barbour County, Alabama", "Bibb County, Alabama", 
-                "Blount County, Alabama")
+        GEOID = c("01001", "01003", "01005"), # Sample counties
+        stringsAsFactors = FALSE
       )
-      print_msg("Using sample county list for empty dataset")
+      print_msg("Using placeholder county list for empty dataset structure")
     }
     
     # Create grid with all counties and years
@@ -1145,11 +1442,11 @@ fetch_economic_data <- function(years,
       grid$NAME <- counties$NAME[match(grid$GEOID, counties$GEOID)]
     }
     
-    # Add empty variable columns with NAs
+    # Add empty variable columns with NAs and proper data quality flags
     for (var in economic_vars) {
       grid[[var]] <- NA_real_
       grid[[paste0(var, "_data_quality")]] <- data_quality_flags$missing
-      grid[[paste0(var, "_data_source")]] <- "NOT_AVAILABLE"
+      grid[[paste0(var, "_data_source")]] <- "NO_DATA_AVAILABLE"
       grid[[paste0(var, "_data_vintage")]] <- NA_character_
     }
     
@@ -1158,7 +1455,17 @@ fetch_economic_data <- function(years,
     
     # Cache the empty data
     saveRDS(economic_data, cache_file)
-    print_msg(paste("Cached empty economic data to:", cache_file))
+    print_msg(paste("Cached empty economic data structure to:", cache_file))
+    
+    # Provide clear error message about missing data
+    print_msg("ERROR: No economic data files found. Please download economic data.")
+    print_msg("Required files should be placed in: data/economic/")
+    print_msg("File formats needed:")
+    print_msg("1. USDA ERS data: CSV files with county typology codes and employment data")
+    print_msg("2. BLS data: CSV files with labor statistics and job growth rates")
+    print_msg("3. Opportunity Insights data: CSV files with economic mobility metrics")
+    print_msg("4. ACS inequality data: CSV files with income inequality metrics")
+    print_msg("Files should include FIPS/GEOID column and relevant economic metrics.")
     
     return(economic_data)
   }
@@ -1184,13 +1491,11 @@ if (!is_sourced()) {
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = list(
       direct = "direct",
       interpolated = "interpolated",
       extrapolated = "extrapolated",
-      simulated = "simulated",
       missing = NA,
       imputed = "imputed"
     )

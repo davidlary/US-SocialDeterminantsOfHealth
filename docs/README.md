@@ -6,6 +6,7 @@ This directory contains all documentation for the Social Determinants of Health 
 
 - [Data Dictionary](./DATA_DICTIONARY.md) - Comprehensive list of all 98 variables across 10 domains, their sources, and available years
 - [ML Forecasting Guide](./ML_FORECASTING.md) - Documentation for machine learning forecasting features
+- [Database Optimizations](./DATABASE_OPTIMIZATIONS.md) - Guide to database performance optimizations
 
 ## Data Source Documentation
 

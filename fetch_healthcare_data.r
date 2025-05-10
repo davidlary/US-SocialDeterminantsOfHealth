@@ -19,25 +19,26 @@ library(zoo) # For interpolation if needed
 #' @param years Vector of years to include
 #' @param cache_dir Directory to store cache files
 #' @param refresh_cache Whether to refresh the cache
-#' @param allow_simulation Whether to generate simulated data if real data not available
 #' @param allow_interpolation Whether to interpolate missing years from available data
 #' @param data_quality_flags List of flags for data quality tracking
 #' @param offline_mode If TRUE, will only use cached data without attempting downloads
+#' @param parallel Whether to use parallel processing
+#' @param parallel_config Optional parallel processing configuration
 #' @return A data frame with healthcare access data for all requested years
 fetch_healthcare_data <- function(years, 
                                  cache_dir = "data/cache", 
                                  refresh_cache = FALSE,
-                                 allow_simulation = FALSE,
                                  allow_interpolation = TRUE,
                                  data_quality_flags = list(
                                    direct = "direct",
                                    interpolated = "interpolated",
                                    extrapolated = "extrapolated",
-                                   simulated = "simulated",
                                    missing = NA,
                                    imputed = "imputed"
                                  ),
-                                 offline_mode = FALSE) {
+                                 offline_mode = FALSE,
+                                 parallel = FALSE,
+                                 parallel_config = NULL) {
   # Helper function for clean output
   print_msg <- function(msg) {
     # Check if being run interactively
@@ -46,6 +47,57 @@ fetch_healthcare_data <- function(years,
       message(msg)
     } else {
       cat(msg, "\n")
+    }
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      print_msg("Parallel processing enabled for healthcare data")
+    } else {
+      # Basic parallel setup
+      print_msg("Using basic parallel processing setup for healthcare data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
     }
   }
   
@@ -63,8 +115,13 @@ fetch_healthcare_data <- function(years,
     
     # Check for empty cache with just placeholder data
     if (nrow(healthcare_data) <= 1 || 
-        (is.data.frame(healthcare_data) && "data_source" %in% names(healthcare_data) && 
-         any(grepl("SIMULATED", healthcare_data$data_source)))) {
+        (is.data.frame(healthcare_data) && 
+         any(sapply(names(healthcare_data), function(col) {
+           if (grepl("_data_source$", col)) {
+             return(any(grepl("SIMULATED|NO_DATA_AVAILABLE", healthcare_data[[col]])))
+           }
+           return(FALSE)
+         })))) {
       print_msg("Cached healthcare data appears to be empty or a placeholder. Will process files again.")
       # Force refresh by continuing past this point
     } else if (length(missing_years) == 0) {
@@ -86,6 +143,59 @@ fetch_healthcare_data <- function(years,
   if (!dir.exists(data_dir)) {
     dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
     print_msg(paste("Created healthcare data directory at:", data_dir))
+  }
+  
+  # Function to find local healthcare data files
+  find_local_healthcare_files <- function() {
+    # List of directories to check
+    healthcare_dirs <- c(
+      "data/healthcare",
+      "data/cache/healthcare",
+      "data/health",
+      "data/medical"
+    )
+    
+    # List of possible file extensions
+    file_exts <- c("\\.csv$", "\\.xlsx$", "\\.xls$", "\\.zip$", "\\.txt$")
+    
+    # Search for files
+    all_files <- list()
+    for (dir in healthcare_dirs) {
+      if (dir.exists(dir)) {
+        for (ext in file_exts) {
+          files <- list.files(dir, pattern = ext, full.names = TRUE, recursive = TRUE)
+          if (length(files) > 0) {
+            # Get file info with modification times
+            file_info <- file.info(files)
+            file_info$path <- rownames(file_info)
+            all_files[[paste(dir, ext, sep = "_")]] <- file_info
+          }
+        }
+      }
+    }
+    
+    # Combine all files and sort by recency
+    if (length(all_files) > 0) {
+      all_file_info <- bind_rows(all_files)
+      all_file_info <- all_file_info[order(all_file_info$mtime, decreasing = TRUE), ]
+      all_paths <- all_file_info$path
+    } else {
+      all_paths <- character(0)
+    }
+    
+    # Filter for different types of healthcare data
+    healthcare_files <- list(
+      ahrf = grep("ahrf|area.*health.*resource|health.*resource.*file", 
+                 all_paths, value = TRUE, ignore.case = TRUE),
+      cms = grep("cms|medicare|medicaid|geographic.*variation", 
+                all_paths, value = TRUE, ignore.case = TRUE),
+      aha = grep("aha|hospital.*association", 
+                all_paths, value = TRUE, ignore.case = TRUE),
+      cdc = grep("cdc|wonder|places|500.*cities", 
+                all_paths, value = TRUE, ignore.case = TRUE)
+    )
+    
+    return(healthcare_files)
   }
   
   # Helper function to safely download and read files
@@ -123,13 +233,25 @@ fetch_healthcare_data <- function(years,
       "preventable_hospital_stays" = "preventable_hospital_stays"
     )
     
-    # Define local file paths
-    ahrf_file <- file.path(data_dir, "ahrf_current.csv")
+    # Find local healthcare files
+    local_files <- find_local_healthcare_files()
+    ahrf_files <- local_files$ahrf
     
-    # Check if we need to download the file
-    need_download <- !file.exists(ahrf_file) || refresh_cache
+    print_msg(paste("Found", length(ahrf_files), "potential AHRF data files"))
     
-    if (need_download) {
+    # Check if we have any local AHRF files
+    if (length(ahrf_files) > 0) {
+      # Use the most recent file
+      ahrf_file <- ahrf_files[1]
+      print_msg(paste("Using most recent AHRF file:", ahrf_file))
+    } else {
+      # Default file path if we need to download
+      ahrf_file <- file.path(data_dir, "ahrf_current.csv")
+      
+      # Check if we need to download the file
+      need_download <- !file.exists(ahrf_file) || refresh_cache
+      
+      if (need_download) {
       # HRSA AHRF is typically available for download via a form
       # Here we're using a direct URL which may change, so we have multiple fallbacks
       urls <- c(
@@ -196,8 +318,9 @@ fetch_healthcare_data <- function(years,
       if (!download_success) {
         print_msg("Could not download or extract AHRF data from any URL")
       }
-    } else {
-      print_msg(paste("Using existing AHRF file:", ahrf_file))
+      } else {
+        print_msg(paste("Using existing AHRF file:", ahrf_file))
+      }
     }
     
     # Process the data if file exists
@@ -462,6 +585,28 @@ fetch_healthcare_data <- function(years,
       "ambulatory_care_sensitive_conditions" = "Ambulatory care sensitive conditions"
     )
     
+    # Find local CMS files
+    local_files <- find_local_healthcare_files()
+    cms_files <- local_files$cms
+    
+    print_msg(paste("Found", length(cms_files), "potential CMS data files"))
+    
+    # Check for files that match year patterns
+    year_specific_files <- list()
+    for (year in years) {
+      # Skip future years
+      if (year > as.integer(format(Sys.Date(), "%Y"))) {
+        next
+      }
+      
+      # Look for files with this year in the name
+      year_files <- grep(paste0("_", year, "\\.|_", year, "$"), cms_files, value = TRUE)
+      if (length(year_files) > 0) {
+        year_specific_files[[as.character(year)]] <- year_files[1]  # Use the first match if multiple
+        print_msg(paste("Found CMS file for year", year, ":", year_files[1]))
+      }
+    }
+    
     # CMS data is available by year
     cms_data_list <- list()
     
@@ -471,13 +616,18 @@ fetch_healthcare_data <- function(years,
         next
       }
       
-      # Define file paths
-      cms_file <- file.path(data_dir, paste0("cms_gv_", year, ".csv"))
-      
-      # Check if we need to download
-      need_download <- !file.exists(cms_file) || refresh_cache
-      
-      if (need_download) {
+      # Check if we have a year-specific file first
+      if (as.character(year) %in% names(year_specific_files)) {
+        cms_file <- year_specific_files[[as.character(year)]]
+        print_msg(paste("Using year-specific CMS file for", year, ":", cms_file))
+      } else {
+        # Define file paths for downloading
+        cms_file <- file.path(data_dir, paste0("cms_gv_", year, ".csv"))
+        
+        # Check if we need to download
+        need_download <- !file.exists(cms_file) || refresh_cache
+        
+        if (need_download) {
         # CMS URLs follow a pattern but it may change
         cms_url <- paste0(
           "https://data.cms.gov/provider-data/sites/default/files/",
@@ -502,20 +652,28 @@ fetch_healthcare_data <- function(years,
             
             if (!safe_download(alt_url2, cms_file, paste("CMS data for", year, "(alt2)"))) {
               print_msg(paste("Could not download CMS data for", year))
-              next
+              
+              # If we have any CMS files, use the most recent one
+              if (length(cms_files) > 0) {
+                cms_file <- cms_files[1]  # Most recent file (already sorted)
+                print_msg(paste("No data available for", year, "- using most recent available CMS file:", cms_file))
+              } else {
+                next
+              }
             }
           }
         }
       } else {
         print_msg(paste("Using existing CMS file for", year))
       }
+    }
+    
+    # Process the data if file exists
+    if (file.exists(cms_file)) {
+      print_msg(paste("Reading CMS data for", year))
       
-      # Process the data if file exists
-      if (file.exists(cms_file)) {
-        print_msg(paste("Reading CMS data for", year))
-        
-        # Read the file
-        tryCatch({
+      # Read the file
+      tryCatch({
           cms_data <- read_csv(cms_file, show_col_types = FALSE)
           
           # Get column names
@@ -607,9 +765,9 @@ fetch_healthcare_data <- function(years,
           cms_data_list[[as.character(year)]] <- year_data
           
           print_msg(paste("Processed CMS data for", year))
-        }, error = function(e) {
-          print_msg(paste("Error reading CMS data for", year, ":", conditionMessage(e)))
-        })
+      }, error = function(e) {
+        print_msg(paste("Error reading CMS data for", year, ":", conditionMessage(e)))
+      })
       }
     }
     
@@ -624,19 +782,70 @@ fetch_healthcare_data <- function(years,
     }
   }
   
-  # Get data from different healthcare sources
-  ahrf_data <- get_ahrf_data()
-  cms_data <- get_cms_data()
-  
-  # Combine all data sources
-  healthcare_data_list <- list()
-  
-  if (!is.null(ahrf_data) && nrow(ahrf_data) > 0) {
-    healthcare_data_list[["ahrf"]] <- ahrf_data
-  }
-  
-  if (!is.null(cms_data) && nrow(cms_data) > 0) {
-    healthcare_data_list[["cms"]] <- cms_data
+  # Get data from different healthcare sources - use parallel processing if enabled
+  if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+    print_msg("Using parallel processing to fetch data from multiple healthcare sources")
+    
+    # Define the data sources to fetch
+    data_sources <- c("ahrf", "cms")
+    
+    # Create a function to process one data source
+    process_data_source <- function(source) {
+      print_msg(paste("Processing healthcare data source:", source))
+      
+      if (source == "ahrf") {
+        return(get_ahrf_data())
+      } else if (source == "cms") {
+        return(get_cms_data())
+      } else {
+        return(NULL)
+      }
+    }
+    
+    # Use future.apply to process data sources in parallel
+    # Set up progress reporting if available
+    if (requireNamespace("progressr", quietly = TRUE)) {
+      # Create a progress handler
+      progressr::handlers(progressr::handler_progress())
+      
+      # Process with progress tracking
+      healthcare_data_sources <- progressr::with_progress({
+        p <- progressr::progressor(steps = length(data_sources))
+        
+        future.apply::future_lapply(data_sources, function(source) {
+          result <- process_data_source(source)
+          p(message = paste("Processed healthcare data source:", source))
+          return(result)
+        })
+      })
+    } else {
+      # Process without progress tracking
+      healthcare_data_sources <- future.apply::future_lapply(data_sources, process_data_source)
+    }
+    
+    # Convert results to named list
+    names(healthcare_data_sources) <- data_sources
+    
+    # Filter out NULL results
+    healthcare_data_list <- healthcare_data_sources[!sapply(healthcare_data_sources, is.null)]
+    healthcare_data_list <- healthcare_data_list[sapply(healthcare_data_list, function(x) !is.null(x) && nrow(x) > 0)]
+    
+  } else {
+    # Sequential processing
+    print_msg("Using sequential processing to fetch data from multiple healthcare sources")
+    ahrf_data <- get_ahrf_data()
+    cms_data <- get_cms_data()
+    
+    # Combine all data sources
+    healthcare_data_list <- list()
+    
+    if (!is.null(ahrf_data) && nrow(ahrf_data) > 0) {
+      healthcare_data_list[["ahrf"]] <- ahrf_data
+    }
+    
+    if (!is.null(cms_data) && nrow(cms_data) > 0) {
+      healthcare_data_list[["cms"]] <- cms_data
+    }
   }
   
   # Process if we have data
@@ -713,9 +922,8 @@ fetch_healthcare_data <- function(years,
           # Interpolate for each county
           county_list <- unique(combined_healthcare_data$GEOID)
           
-          interp_county_list <- list()
-          
-          for (county in county_list) {
+          # Define the interpolation function for a single county
+          interpolate_county_data <- function(county) {
             # Get data for this county
             county_data <- combined_healthcare_data %>% filter(GEOID == county)
             
@@ -761,8 +969,49 @@ fetch_healthcare_data <- function(years,
                 }
               }
               
-              interp_county_list[[county]] <- new_row
+              return(new_row)
+            } else {
+              return(NULL)
             }
+          }
+          
+          # Process counties in parallel if enabled
+          interp_county_list <- if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+            print_msg(paste("Using parallel processing for county interpolation with", length(county_list), "counties"))
+            
+            # Setup progress tracking if available
+            if (requireNamespace("progressr", quietly = TRUE)) {
+              progressr::handlers(progressr::handler_progress())
+              result_list <- progressr::with_progress({
+                p <- progressr::progressor(steps = length(county_list))
+                
+                future.apply::future_lapply(county_list, function(county) {
+                  result <- interpolate_county_data(county)
+                  p(message = paste("Processed county", county))
+                  return(result)
+                })
+              })
+            } else {
+              # No progress tracking
+              result_list <- future.apply::future_lapply(county_list, interpolate_county_data)
+            }
+            
+            # Convert list to named list
+            names(result_list) <- county_list
+            result_list[!sapply(result_list, is.null)]
+          } else {
+            # Sequential processing
+            print_msg(paste("Using sequential processing for county interpolation with", length(county_list), "counties"))
+            result_list <- list()
+            
+            for (county in county_list) {
+              result <- interpolate_county_data(county)
+              if (!is.null(result)) {
+                result_list[[county]] <- result
+              }
+            }
+            
+            result_list
           }
           
           # Combine all counties for this year
@@ -817,120 +1066,9 @@ fetch_healthcare_data <- function(years,
     print_msg(paste("Cached healthcare access data to:", cache_file))
     
     return(combined_healthcare_data)
-  } else if (allow_simulation) {
-    # Create simulated data
-    print_msg("No healthcare access data found. Creating simulated data...")
-    
-    # Healthcare variables to simulate
-    healthcare_vars <- c(
-      "primary_care_physicians_per_100k" = "Primary care physicians per 100,000 population",
-      "mental_health_providers_per_100k" = "Mental health providers per 100,000 population",
-      "dentists_per_100k" = "Dentists per 100,000 population",
-      "hospital_beds_per_1000" = "Hospital beds per 1,000 population",
-      "fqhc_access_pct" = "Percentage with access to FQHCs",
-      "pharmacies_per_100k" = "Pharmacies per 100,000 population",
-      "preventable_hospital_stays" = "Preventable hospital stays per 100,000 Medicare enrollees",
-      "medicare_spending_per_beneficiary" = "Medicare spending per beneficiary",
-      "preventive_services_pct" = "Percentage receiving preventive services",
-      "ambulatory_care_sensitive_conditions" = "Rate of ambulatory care sensitive conditions"
-    )
-    
-    # Get county list from built-in data or create basic list
-    counties <- data.frame(
-      GEOID = c("01001", "01003", "01005", "01007", "01009"), # Sample counties
-      NAME = c("Autauga County, Alabama", "Baldwin County, Alabama", 
-               "Barbour County, Alabama", "Bibb County, Alabama", 
-               "Blount County, Alabama")
-    )
-    
-    # Try to get a more comprehensive list if possible
-    tryCatch({
-      # Check for tidycensus
-      if (requireNamespace("tidycensus", quietly = TRUE)) {
-        library(tidycensus)
-        
-        # Try to get counties from Census API
-        if (Sys.getenv("CENSUS_API_KEY") != "") {
-          counties <- tidycensus::get_decennial(
-            geography = "county",
-            variables = "P001001", # Total population
-            year = 2020,
-            geometry = FALSE
-          ) %>%
-            select(GEOID, NAME) %>%
-            distinct()
-          
-          print_msg(paste("Using", nrow(counties), "counties from Census API"))
-        }
-      }
-    }, error = function(e) {
-      print_msg("Using sample county list for simulation")
-    })
-    
-    # Create simulated data for each year
-    sim_data_list <- list()
-    for (year in years) {
-      # Create base data frame with counties and year
-      year_data <- counties %>%
-        mutate(year = year)
-      
-      # Add simulated values for each variable
-      for (var_name in names(healthcare_vars)) {
-        if (var_name == "primary_care_physicians_per_100k") {
-          # Typically 50-150 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 50, 150)
-        } else if (var_name == "mental_health_providers_per_100k") {
-          # Typically 100-300 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 100, 300)
-        } else if (var_name == "dentists_per_100k") {
-          # Typically 30-100 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 30, 100)
-        } else if (var_name == "hospital_beds_per_1000") {
-          # Typically 1.5-4 per 1000
-          year_data[[var_name]] <- runif(nrow(year_data), 1.5, 4)
-        } else if (var_name == "fqhc_access_pct") {
-          # Percentage with access - 10-70%
-          year_data[[var_name]] <- runif(nrow(year_data), 10, 70)
-        } else if (var_name == "pharmacies_per_100k") {
-          # Typically 20-40 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 20, 40)
-        } else if (var_name == "preventable_hospital_stays") {
-          # Typically 3000-6000 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 3000, 6000)
-        } else if (var_name == "medicare_spending_per_beneficiary") {
-          # Typically $8000-$15000
-          year_data[[var_name]] <- runif(nrow(year_data), 8000, 15000)
-        } else if (var_name == "preventive_services_pct") {
-          # Typically 30-80%
-          year_data[[var_name]] <- runif(nrow(year_data), 30, 80)
-        } else if (var_name == "ambulatory_care_sensitive_conditions") {
-          # Typically 1000-3000 per 100k
-          year_data[[var_name]] <- runif(nrow(year_data), 1000, 3000)
-        } else {
-          # Default - medium positive numbers
-          year_data[[var_name]] <- runif(nrow(year_data), 0, 100)
-        }
-        
-        # Add quality flags
-        year_data[[paste0(var_name, "_data_quality")]] <- data_quality_flags$simulated
-        year_data[[paste0(var_name, "_data_source")]] <- "SIMULATED Healthcare Data"
-        year_data[[paste0(var_name, "_data_vintage")]] <- paste0("simulated_", year)
-      }
-      
-      sim_data_list[[as.character(year)]] <- year_data
-    }
-    
-    # Combine all years
-    simulated_data <- bind_rows(sim_data_list)
-    
-    # Cache the simulated data
-    saveRDS(simulated_data, cache_file)
-    print_msg(paste("Cached simulated healthcare access data to:", cache_file))
-    
-    return(simulated_data)
   } else {
-    # No data and simulation not allowed - create empty dataset with NAs
-    print_msg("No healthcare access data available and simulation not allowed. Creating empty dataset with NAs.")
+    # No data available - create empty dataset with proper structure
+    print_msg("No healthcare access data available. Creating empty dataset with proper structure.")
     
     # Get variable list for healthcare variables
     healthcare_vars <- c(
@@ -985,12 +1123,26 @@ fetch_healthcare_data <- function(years,
     for (var in healthcare_vars) {
       grid[[var]] <- NA_real_
       grid[[paste0(var, "_data_quality")]] <- data_quality_flags$missing
-      grid[[paste0(var, "_data_source")]] <- "NOT_AVAILABLE"
+      grid[[paste0(var, "_data_source")]] <- "NO_DATA_AVAILABLE"
       grid[[paste0(var, "_data_vintage")]] <- NA_character_
     }
     
     healthcare_data <- as_tibble(grid)
     print_msg(paste("Created empty healthcare dataset with", nrow(healthcare_data), "rows"))
+    
+    # Provide clear error message about missing data
+    print_msg("ERROR: No healthcare data files found. Please download healthcare data.")
+    print_msg("Required files should be placed in one of these directories:")
+    for (dir in c("data/healthcare", "data/health", "data/medical")) {
+      print_msg(paste("  -", dir))
+    }
+    print_msg("File formats needed:")
+    print_msg("1. HRSA Area Health Resources Files (AHRF): Annual survey of county-level healthcare resources")
+    print_msg("   - Download from: https://data.hrsa.gov/topics/health-workforce/ahrf")
+    print_msg("   - Expected file name: ahrf_current.csv or similar")
+    print_msg("2. CMS Geographic Variation: Medicare data by county")
+    print_msg("   - Download from: https://data.cms.gov/tools/geographic-variation-dashboard")
+    print_msg("   - Expected file name: cms_gv_YYYY.csv where YYYY is the year")
     
     # Cache the empty data
     saveRDS(healthcare_data, cache_file)
@@ -1015,21 +1167,32 @@ if (!is_sourced()) {
   # Test for last 5 years
   test_years <- (current_year-4):current_year
   
+  # Check for required packages for parallel processing
+  has_parallel_deps <- requireNamespace("future", quietly = TRUE) && 
+                       requireNamespace("future.apply", quietly = TRUE)
+  
+  # Use parallel processing if dependencies are available
+  use_parallel <- has_parallel_deps
+  if (use_parallel) {
+    cat("Using parallel processing for healthcare data fetching test\n")
+  } else {
+    cat("Parallel processing dependencies not available, using sequential processing\n")
+  }
+  
   # Test the function
   result <- fetch_healthcare_data(
     years = test_years,
     cache_dir = "data/cache",
     refresh_cache = FALSE,
-    allow_simulation = TRUE,
     allow_interpolation = TRUE,
     data_quality_flags = list(
       direct = "direct",
       interpolated = "interpolated",
       extrapolated = "extrapolated",
-      simulated = "simulated",
       missing = NA,
       imputed = "imputed"
-    )
+    ),
+    parallel = use_parallel
   )
   
   cat("Test completed with", nrow(result), "rows of data.\n")

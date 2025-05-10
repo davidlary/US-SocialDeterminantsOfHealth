@@ -13,6 +13,13 @@ library(future)
 library(future.apply)
 library(progressr)
 
+# Main wrapper function for backwards compatibility
+fetch_county_data_final <- function(crosswalk, parallel = TRUE, num_cores = NULL) {
+  result <- fetch_county_data(crosswalk, parallel, num_cores)
+  return(result)
+}
+
+# Implementation function
 fetch_county_data <- function(crosswalk, parallel = TRUE, num_cores = NULL) {
   # Check if parallel backend is already set up
   if (parallel && !inherits(future::plan(), "sequential")) {

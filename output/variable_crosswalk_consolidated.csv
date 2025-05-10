@@ -1,0 +1,256 @@
+variable_name,domain,description,type,source,min_year,max_year,units,related_to_standard,standard_domain,extended_only,notes,api_source,api_variable,data_quality_flag_required
+employment_access_index,Built Environment,Access to employment centers,numeric_index,EPA Smart Location Database,2010,2021,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+housing_density,Built Environment,Housing units per acre of developed land,numeric_density,EPA Smart Location Database,2010,2021,units/acre,NA,Environmental,TRUE,NA,NA,NA,TRUE
+land_use_diversity,Built Environment,Mix of land uses (entropy index),numeric_index,EPA Smart Location Database,2010,2021,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+park_access_pct,Built Environment,Percentage of residents living within 10-minute walk of a park,numeric_percent,Trust for Public Land ParkScore,2012,2022,percent,NA,Environmental,TRUE,NA,NA,NA,TRUE
+park_acres_per_1000,Built Environment,"Park acres per 1,000 residents",numeric_rate,Trust for Public Land ParkScore,2012,2022,acres/1000,NA,Environmental,TRUE,NA,NA,NA,TRUE
+park_spending_per_capita,Built Environment,Park system spending per resident,numeric_money,Trust for Public Land ParkScore,2012,2022,dollars,NA,Environmental,TRUE,NA,NA,NA,TRUE
+playgrounds_per_10000,Built Environment,"Playgrounds per 10,000 residents",numeric_rate,Trust for Public Land ParkScore,2012,2022,count/10000,NA,Environmental,TRUE,NA,NA,NA,TRUE
+street_intersection_density,Built Environment,Number of intersections per square mile,numeric_density,EPA Smart Location Database,2010,2021,count/sq mile,NA,Environmental,TRUE,NA,NA,NA,TRUE
+transit_service_density,Built Environment,Transit routes and stops per square mile,numeric_density,EPA Smart Location Database,2010,2021,count/sq mile,NA,Environmental,TRUE,NA,NA,NA,TRUE
+walkability_index,Built Environment,County-level walkability score,numeric_index,EPA Smart Location Database,2010,2021,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+homicide_rate,Crime & Safety,"Homicides per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,Social,TRUE,NA,NA,NA,TRUE
+jail_incarceration_rate,Crime & Safety,"County jail inmates per 100,000 population",numeric_rate,Bureau of Justice Statistics,2000,2020,count/100k,NA,Social,TRUE,NA,NA,NA,TRUE
+pretrial_detention_rate,Crime & Safety,"Pretrial detainees per 100,000 population",numeric_rate,Bureau of Justice Statistics,2000,2020,count/100k,NA,Social,TRUE,NA,NA,NA,TRUE
+property_crime_rate,Crime & Safety,"Property crimes per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,Social,TRUE,NA,NA,NA,TRUE
+violent_crime_rate,Crime & Safety,"Violent crimes per 100,000 population",numeric_rate,FBI Uniform Crime Reports,2000,2021,count/100k,NA,Social,TRUE,NA,NA,NA,TRUE
+female_population,Demographic,Female population,numeric_count,US Census Bureau,2000,2023,people,NA,Demographic,FALSE,NA,NA,NA,FALSE
+male_population,Demographic,Male population,numeric_count,US Census Bureau,2000,2023,people,NA,Demographic,FALSE,NA,NA,NA,FALSE
+median_age,Demographic,Median age of population,numeric_years,US Census Bureau,2000,2023,years,NA,Demographic,FALSE,NA,NA,NA,FALSE
+population_over_65,Demographic,Population 65 years and older,numeric_count,US Census Bureau,2000,2023,people,NA,Demographic,FALSE,NA,NA,NA,FALSE
+population_under_18,Demographic,Population under 18 years old,numeric_count,US Census Bureau,2000,2023,people,NA,Demographic,FALSE,NA,NA,NA,FALSE
+total_population,Demographic,Total population,numeric_count,US Census Bureau,2000,2023,people,NA,Demographic,FALSE,NA,NA,NA,FALSE
+child_poverty_rate,Economic,Percentage of children below poverty level,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+gini_index,Economic,Gini index of income inequality,numeric_index,American Community Survey,2010,2023,index,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_100k_150k,Economic,"Households with income $100,000 to $149,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_10k_15k,Economic,"Households with income $10,000 to $14,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_150k_200k,Economic,"Households with income $150,000 to $199,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_15k_25k,Economic,"Households with income $15,000 to $24,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_200k_plus,Economic,"Households with income $200,000 or more",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_25k_35k,Economic,"Households with income $25,000 to $34,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_35k_50k,Economic,"Households with income $35,000 to $49,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_50k_75k,Economic,"Households with income $50,000 to $74,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_75k_100k,Economic,"Households with income $75,000 to $99,999",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+income_less_10k,Economic,"Households with income less than $10,000",numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+labor_force_participation,Economic,Labor force participation rate,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+mean_household_income,Economic,Mean household income,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+median_earnings,Economic,Median earnings for workers,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+median_female_earnings,Economic,Median earnings for female workers,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+median_household_income,Economic,Median household income,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+median_male_earnings,Economic,Median earnings for male workers,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+per_capita_income,Economic,Per capita income,numeric_money,American Community Survey,2010,2023,dollars,NA,Economic,FALSE,NA,NA,NA,FALSE
+poverty_rate,Economic,Percentage of population below poverty level,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+senior_poverty_rate,Economic,Percentage of seniors (65+) below poverty level,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+snap_benefits,Economic,Households receiving SNAP/Food Stamps,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+unemployment_rate,Economic,Unemployment rate,numeric_percent,American Community Survey,2010,2023,percent,NA,Economic,FALSE,NA,NA,NA,FALSE
+absolute_upward_mobility,Economic Factors,Expected income rank for children from low-income families,numeric_index,Opportunity Insights,2000,2018,percentile,NA,Economic,TRUE,NA,NA,NA,TRUE
+economic_distress_index,Economic Factors,Composite index of economic distress,numeric_index,Appalachian Regional Commission,2000,2023,index,NA,Economic,TRUE,NA,NA,NA,TRUE
+economic_typology,Economic Factors,County economic typology,categorical,USDA Economic Research Service,2000,2023,category,NA,Economic,TRUE,NA,NA,NA,TRUE
+employment_volatility_index,Economic Factors,Index of employment stability/volatility,numeric_index,USDA Economic Research Service,2000,2023,index,unemployment_rate,Economic,TRUE,NA,NA,NA,TRUE
+income_inequality_ratio,Economic Factors,Ratio of income at 80th percentile to income at 20th percentile,numeric_ratio,American Community Survey,2010,2023,ratio,gini_index,Economic,TRUE,NA,NA,NA,TRUE
+income_mobility_index,Economic Factors,Measure of intergenerational economic mobility,numeric_index,Opportunity Insights,2000,2018,index,NA,Economic,TRUE,NA,NA,NA,TRUE
+job_density_index,Economic Factors,Number of jobs within typical commute distance,numeric_index,Opportunity Insights,2000,2018,index,NA,Economic,TRUE,NA,NA,NA,TRUE
+job_growth_rate,Economic Factors,Annual job growth rate,numeric_percent,Bureau of Labor Statistics,2000,2023,percent,unemployment_rate,Economic,TRUE,NA,NA,NA,TRUE
+mean_commute_distance,Economic Factors,Average commute distance,numeric_distance,Opportunity Insights,2000,2018,miles,mean_commute_time,Economic,TRUE,NA,NA,NA,TRUE
+persistent_child_poverty_county,Economic Factors,Flag for counties with persistent child poverty,binary,USDA Economic Research Service,2000,2023,binary,poverty_rate,Economic,TRUE,NA,NA,NA,TRUE
+persistent_poverty_county,Economic Factors,Flag for counties with persistent poverty,binary,USDA Economic Research Service,2000,2023,binary,poverty_rate,Economic,TRUE,NA,NA,NA,TRUE
+bachelors_or_higher,Education,Population with bachelor's degree or higher,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+bachelors_or_higher_pct,Education,Percentage with bachelor's degree or higher,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+enrolled_in_college,Education,Population enrolled in college or graduate school,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+enrolled_in_college_pct,Education,Percentage enrolled in college or graduate school,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+graduate_degree,Education,Population with graduate or professional degree,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+graduate_degree_pct,Education,Percentage with graduate or professional degree,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+high_school_graduation_rate,Education,High school graduation rate,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+high_school_only,Education,Population with high school diploma only,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+high_school_only_pct,Education,Percentage with high school diploma only,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+less_than_high_school,Education,Population with less than high school education,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+less_than_high_school_pct,Education,Percentage with less than high school education,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+some_college,Education,Population with some college or associate's degree,numeric_count,American Community Survey,2010,2023,people,NA,Education,FALSE,NA,NA,NA,FALSE
+some_college_pct,Education,Percentage with some college or associate's degree,numeric_percent,American Community Survey,2010,2023,percent,NA,Education,FALSE,NA,NA,NA,FALSE
+educational_opportunity_index,Educational Resources & Quality,Measure of educational opportunity,numeric_index,Stanford Education Data Archive,2009,2018,index,NA,Education,TRUE,NA,NA,NA,TRUE
+math_achievement_gap,Educational Resources & Quality,Achievement gap in math scores by race/ethnicity,numeric_index,Stanford Education Data Archive,2009,2018,z-score,NA,Education,TRUE,NA,NA,NA,TRUE
+per_pupil_expenditure,Educational Resources & Quality,Per-pupil expenditure in public schools,numeric_money,National Center for Education Statistics,2000,2022,dollars,NA,Education,TRUE,NA,NA,NA,TRUE
+preschool_enrollment_rate,Educational Resources & Quality,Percentage of 3-4 year-olds enrolled in preschool,numeric_percent,National Center for Education Statistics,2000,2022,percent,NA,Education,TRUE,NA,NA,NA,TRUE
+reading_achievement_gap,Educational Resources & Quality,Achievement gap in reading scores by race/ethnicity,numeric_index,Stanford Education Data Archive,2009,2018,z-score,NA,Education,TRUE,NA,NA,NA,TRUE
+school_funding_equity,Educational Resources & Quality,Ratio of funding in high-poverty vs. low-poverty districts,numeric_ratio,National Center for Education Statistics,2000,2022,ratio,NA,Education,TRUE,NA,NA,NA,TRUE
+student_teacher_ratio,Educational Resources & Quality,Student-to-teacher ratio in public schools,numeric_ratio,National Center for Education Statistics,2000,2022,ratio,NA,Education,TRUE,NA,NA,NA,TRUE
+air_pollution_pm25,Environmental,Fine particulate matter (PM2.5) concentration,numeric_index,EPA / Census Bureau,2000,2023,µg/m³,NA,Environmental,FALSE,NA,NA,NA,FALSE
+population_density,Environmental,Population per square mile,numeric_density,EPA / Census Bureau,2000,2023,people/sq mile,NA,Environmental,FALSE,NA,NA,NA,FALSE
+air_quality_days_unhealthy,Environmental Health,Number of days with unhealthy air quality,numeric_count,EPA Air Quality System,2000,2023,days,air_pollution_pm25,Environmental,TRUE,NA,NA,NA,TRUE
+air_toxics_cancer_risk,Environmental Health,Air toxics cancer risk,numeric_rate,EPA Air Quality System,2000,2023,per million,NA,Environmental,TRUE,NA,NA,NA,TRUE
+diesel_pm_concentration,Environmental Health,Diesel particulate matter concentration,numeric_index,EPA Air Quality System,2000,2023,μg/m³,NA,Environmental,TRUE,NA,NA,NA,TRUE
+drought_severity_index,Environmental Health,Average drought severity index,numeric_index,CDC Environmental Public Health Tracking,2002,2022,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+extreme_heat_days,Environmental Health,Annual number of extreme heat days,numeric_count,CDC Environmental Public Health Tracking,2002,2022,days,NA,Environmental,TRUE,NA,NA,NA,TRUE
+extreme_precipitation_events,Environmental Health,Annual number of extreme precipitation events,numeric_count,CDC Environmental Public Health Tracking,2002,2022,count,NA,Environmental,TRUE,NA,NA,NA,TRUE
+lead_exposure_risk_index,Environmental Health,Index of lead exposure risk,numeric_index,CDC Environmental Public Health Tracking,2002,2022,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+lead_paint_indicator,Environmental Health,Percentage of housing units built pre-1960,numeric_percent,EPA EJSCREEN,2016,2023,percent,NA,Environmental,TRUE,NA,NA,NA,TRUE
+ozone_days_exceeding,Environmental Health,Days exceeding ozone standards,numeric_count,EPA Air Quality System,2000,2023,days,NA,Environmental,TRUE,NA,NA,NA,TRUE
+pm25_annual_mean,Environmental Health,Annual mean PM2.5 concentration,numeric_index,EPA Air Quality System,2000,2023,μg/m³,air_pollution_pm25,Environmental,TRUE,NA,NA,NA,TRUE
+proximity_to_hazardous_waste,Environmental Health,Count of hazardous waste facilities within 5km,numeric_count,EPA EJSCREEN,2016,2023,count,NA,Environmental,TRUE,NA,NA,NA,TRUE
+proximity_to_npl_sites,Environmental Health,Proximity to National Priorities List (Superfund) sites,numeric_index,EPA EJSCREEN,2016,2023,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+public_water_violations,Environmental Health,Number of public water system violations,numeric_count,CDC Environmental Public Health Tracking,2002,2022,count,NA,Environmental,TRUE,NA,NA,NA,TRUE
+respiratory_hazard_index,Environmental Health,Respiratory hazard index from air pollutants,numeric_index,EPA Air Quality System,2000,2023,index,NA,Environmental,TRUE,NA,NA,NA,TRUE
+traffic_proximity,Environmental Health,Count of vehicles at major roads within 500m,numeric_count,EPA EJSCREEN,2016,2023,count,NA,Environmental,TRUE,NA,NA,NA,TRUE
+wastewater_discharge,Environmental Health,Toxicity-weighted concentrations in stream reach,numeric_index,EPA EJSCREEN,2016,2023,concentration,NA,Environmental,TRUE,NA,NA,NA,TRUE
+child_food_insecurity_rate,Food Environment & Access,Percentage of children experiencing food insecurity,numeric_percent,Feeding America Map the Meal Gap,2009,2022,percent,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+children_low_access_pct,Food Environment & Access,Percentage of children with low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+convenience_stores_per_1000,Food Environment & Access,"Number of convenience stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+farmers_markets_per_1000,Food Environment & Access,"Farmers markets per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+fast_food_restaurants_per_1000,Food Environment & Access,"Fast food restaurants per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+food_insecurity_cost_per_person,Food Environment & Access,Average cost per person to meet food needs,numeric_money,Feeding America Map the Meal Gap,2009,2022,dollars,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+food_insecurity_rate,Food Environment & Access,Percentage of overall population experiencing food insecurity,numeric_percent,Feeding America Map the Meal Gap,2009,2022,percent,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+full_service_restaurants_per_1000,Food Environment & Access,"Full-service restaurants per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+grocery_stores_per_1000,Food Environment & Access,"Number of supermarkets and grocery stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+low_income_low_access_pct,Food Environment & Access,Percentage of population that is low income and has low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+seniors_low_access_pct,Food Environment & Access,Percentage of seniors with low access to a grocery store,numeric_percent,USDA Food Environment Atlas,2010,2022,percent,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+snap_authorized_stores_per_1000,Food Environment & Access,"SNAP-authorized retailers per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+snap_benefits_redemption_per_capita,Food Environment & Access,SNAP benefits redemption per capita,numeric_money,USDA Food Environment Atlas,2010,2022,dollars,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+supercenters_per_1000,Food Environment & Access,"Number of supercenter and club stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+wic_authorized_stores_per_1000,Food Environment & Access,"WIC-authorized stores per 1,000 population",numeric_rate,USDA Food Environment Atlas,2010,2022,count/1000,food_insecurity_pct,Health Behaviors,TRUE,NA,NA,NA,TRUE
+binge_drinking_pct,Health Behaviors,Percentage of adults reporting binge drinking,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent,NA,Health Behaviors,FALSE,NA,NA,NA,FALSE
+food_insecurity_pct,Health Behaviors,Percentage of population with food insecurity,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent,NA,Health Behaviors,FALSE,NA,NA,NA,FALSE
+insufficient_sleep_pct,Health Behaviors,Percentage of adults reporting insufficient sleep,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent,NA,Health Behaviors,FALSE,NA,NA,NA,FALSE
+physical_inactivity_pct,Health Behaviors,Percentage of adults reporting no leisure-time physical activity,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent,NA,Health Behaviors,FALSE,NA,NA,NA,FALSE
+smoking_pct,Health Behaviors,Percentage of adults who currently smoke,numeric_percent,CDC PLACES / Feeding America,2010,2022,percent,NA,Health Behaviors,FALSE,NA,NA,NA,FALSE
+arthritis_pct,Health Outcomes,Percentage of adults with arthritis,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+asthma_pct,Health Outcomes,Percentage of adults with asthma,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+cancer_pct,Health Outcomes,Percentage of adults with cancer (excluding skin cancer),numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+copd_pct,Health Outcomes,Percentage of adults with COPD,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+coronary_heart_disease_pct,Health Outcomes,Percentage of adults with coronary heart disease,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+depression_pct,Health Outcomes,Percentage of adults with diagnosed depression,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+diabetes_pct,Health Outcomes,Percentage of adults with diagnosed diabetes,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+heart_disease_pct,Health Outcomes,Percentage of adults with heart disease,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+high_blood_pressure_pct,Health Outcomes,Percentage of adults with high blood pressure,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+high_cholesterol_pct,Health Outcomes,Percentage of adults with high cholesterol,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+infant_mortality_rate,Health Outcomes,"Infant mortality rate per 1,000 live births",numeric_rate,CDC PLACES / CDC WONDER,2010,2022,count/1000,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+kidney_disease_pct,Health Outcomes,Percentage of adults with kidney disease,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+le_female_lower_ci,Health Outcomes,Lower confidence interval for female life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+le_female_upper_ci,Health Outcomes,Upper confidence interval for female life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+le_lower_ci,Health Outcomes,Lower confidence interval for life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+le_male_lower_ci,Health Outcomes,Lower confidence interval for male life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+le_male_upper_ci,Health Outcomes,Upper confidence interval for male life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+le_upper_ci,Health Outcomes,Upper confidence interval for life expectancy,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy,Health Outcomes,Life expectancy at birth,numeric_years,CDC PLACES / CDC WONDER,2010,2022,years,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+life_expectancy_female,Health Outcomes,Female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_hispanic,Health Outcomes,Hispanic female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_multirace,Health Outcomes,Non-Hispanic multiracial female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_nhaian,Health Outcomes,Non-Hispanic AIAN female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_nhasian,Health Outcomes,Non-Hispanic Asian female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_nhb,Health Outcomes,Non-Hispanic Black female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_nhpi,Health Outcomes,Non-Hispanic Pacific Islander female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_female_nhw,Health Outcomes,Non-Hispanic White female life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_hispanic,Health Outcomes,Hispanic life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male,Health Outcomes,Male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_hispanic,Health Outcomes,Hispanic male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_multirace,Health Outcomes,Non-Hispanic multiracial male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_nhaian,Health Outcomes,Non-Hispanic AIAN male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_nhasian,Health Outcomes,Non-Hispanic Asian male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_nhb,Health Outcomes,Non-Hispanic Black male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_nhpi,Health Outcomes,Non-Hispanic Pacific Islander male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_male_nhw,Health Outcomes,Non-Hispanic White male life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_multirace,Health Outcomes,Non-Hispanic multiracial life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_nhaian,Health Outcomes,Non-Hispanic AIAN life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_nhasian,Health Outcomes,Non-Hispanic Asian life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_nhb,Health Outcomes,Non-Hispanic Black life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_nhpi,Health Outcomes,Non-Hispanic Pacific Islander life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+life_expectancy_nhw,Health Outcomes,Non-Hispanic White life expectancy at birth,numeric_years,IHME (Institute for Health Metrics and Evaluation),2000,2019,years,NA,Health Outcomes,TRUE,NA,NA,NA,TRUE
+obesity_pct,Health Outcomes,Percentage of adults with obesity (BMI ≥ 30),numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+poor_mental_health_pct,Health Outcomes,Percentage of adults reporting poor mental health,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+poor_physical_health_pct,Health Outcomes,Percentage of adults reporting poor physical health,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+stroke_pct,Health Outcomes,Percentage of adults who have had a stroke,numeric_percent,CDC PLACES / CDC WONDER,2010,2022,percent,NA,Health Outcomes,FALSE,NA,NA,NA,FALSE
+annual_checkup_pct,Healthcare,Percentage of adults who had an annual checkup,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+dental_visit_pct,Healthcare,Percentage of adults who visited a dentist in the past year,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+medicaid_pct,Healthcare,Percentage of population with Medicaid coverage,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+medicare_pct,Healthcare,Percentage of population with Medicare coverage,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+no_health_insurance_pct,Healthcare,Percentage of adults without any health insurance,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+primary_care_physicians_per_100k,Healthcare,"Primary care physicians per 100,000 population",numeric_rate,CDC PLACES / SAHIE,2010,2022,count/100k,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+uninsured_pct,Healthcare,Percentage of population without health insurance,numeric_percent,CDC PLACES / SAHIE,2010,2022,percent,NA,Healthcare,FALSE,NA,NA,NA,FALSE
+ambulatory_care_sensitive_conditions,Healthcare Access,Rate of hospitalization for ambulatory care sensitive conditions,numeric_rate,CMS Geographic Variation Public Use File,2007,2021,rate,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+dentists_per_100k,Healthcare Access,"Dentists per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+fqhc_access_pct,Healthcare Access,Percentage of population with access to Federally Qualified Health Centers,numeric_percent,HRSA Area Health Resources Files,2000,2023,percent,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+hospital_beds_per_1000,Healthcare Access,"Hospital beds per 1,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/1000,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+medicare_spending_per_beneficiary,Healthcare Access,Medicare spending per beneficiary,numeric_money,CMS Geographic Variation Public Use File,2007,2021,dollars,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+mental_health_providers_per_100k,Healthcare Access,"Mental health providers per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+pharmacies_per_100k,Healthcare Access,"Pharmacies per 100,000 population",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+preventable_hospital_stays,Healthcare Access,"Preventable hospital stays per 100,000 Medicare enrollees",numeric_rate,HRSA Area Health Resources Files,2000,2023,count/100k,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+preventive_services_pct,Healthcare Access,Percentage of Medicare beneficiaries receiving preventive services,numeric_percent,CMS Geographic Variation Public Use File,2007,2021,percent,NA,Healthcare,TRUE,NA,NA,NA,TRUE
+eviction_filing_rate,Housing,Number of eviction filings per 100 renter homes,numeric_rate,Eviction Lab,2000,2018,rate,NA,Housing,TRUE,NA,NA,NA,TRUE
+eviction_rate,Housing,Number of evictions per 100 renter homes,numeric_rate,Eviction Lab,2000,2018,rate,NA,Housing,TRUE,NA,NA,NA,TRUE
+foreclosure_rate,Housing,"Foreclosures per 1,000 housing units",numeric_rate,Federal Reserve HMDA,2007,2023,rate,NA,Housing,TRUE,NA,NA,NA,TRUE
+high_cost_loans_pct,Housing,Percentage of loans that are high-cost,numeric_percent,Federal Reserve HMDA,2007,2023,percent,NA,Housing,TRUE,NA,NA,NA,TRUE
+homeownership_rate,Housing,Homeownership rate,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+housing_built_after_2010,Housing,Housing units built 2010 or later,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+housing_built_before_1940,Housing,Housing units built before 1940,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+housing_problems_pct,Housing,Percentage of households with at least one housing problem,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_problems,Housing,TRUE,NA,NA,NA,TRUE
+housing_without_kitchen,Housing,Housing units lacking complete kitchen facilities,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+housing_without_plumbing,Housing,Housing units lacking complete plumbing facilities,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+low_income_renters_affordable_units_ratio,Housing,Ratio of affordable units to low-income renters,numeric_ratio,HUD CHAS,2006,2020,ratio,NA,Housing,TRUE,NA,NA,NA,TRUE
+median_home_value,Housing,Median home value,numeric_money,American Community Survey / HUD CHAS,2010,2023,dollars,NA,Housing,FALSE,NA,NA,NA,FALSE
+median_rent,Housing,Median gross rent,numeric_money,American Community Survey / HUD CHAS,2010,2023,dollars,NA,Housing,FALSE,NA,NA,NA,FALSE
+mortgage_denial_rate,Housing,Percentage of mortgage applications denied,numeric_percent,Federal Reserve HMDA,2007,2023,percent,NA,Housing,TRUE,NA,NA,NA,TRUE
+occupied_housing_units,Housing,Occupied housing units,numeric_count,American Community Survey / HUD CHAS,2010,2023,units,NA,Housing,FALSE,NA,NA,NA,FALSE
+overcrowded_housing_pct,Housing,Percentage of housing units with more than 1 person per room,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+rent_burden_pct,Housing,Percentage of household income spent on rent,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+rental_rate,Housing,Rental rate,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+severe_housing_cost_burden,Housing,Households with severe housing cost burden (>50% of income),numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+severe_housing_problems,Housing,Households with at least one severe housing problem,numeric_percent,American Community Survey / HUD CHAS,2010,2023,percent,NA,Housing,FALSE,NA,NA,NA,FALSE
+severely_cost_burdened_owners_pct,Housing,Percentage of owner households spending >50% of income on housing,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_cost_burden,Housing,TRUE,NA,NA,NA,TRUE
+severely_cost_burdened_renters_pct,Housing,Percentage of renter households spending >50% of income on housing,numeric_percent,HUD CHAS,2006,2020,percent,severe_housing_cost_burden,Housing,TRUE,NA,NA,NA,TRUE
+total_housing_units,Housing,Total housing units,numeric_count,American Community Survey / HUD CHAS,2010,2023,units,NA,Housing,FALSE,NA,NA,NA,FALSE
+vacant_housing_units,Housing,Vacant housing units,numeric_count,American Community Survey / HUD CHAS,2010,2023,units,NA,Housing,FALSE,NA,NA,NA,FALSE
+aian_pct,Race/Ethnicity,American Indian and Alaska Native alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+aian_population,Race/Ethnicity,American Indian and Alaska Native alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+asian_pct,Race/Ethnicity,Asian alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+asian_population,Race/Ethnicity,Asian alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+black_pct,Race/Ethnicity,Black or African American alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+black_population,Race/Ethnicity,Black or African American alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+hispanic_pct,Race/Ethnicity,Hispanic or Latino percentage (any race),numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+hispanic_population,Race/Ethnicity,Hispanic or Latino population (any race),numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+multiracial_pct,Race/Ethnicity,Two or more races percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+multiracial_population,Race/Ethnicity,Two or more races population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+nhpi_pct,Race/Ethnicity,Native Hawaiian and Other Pacific Islander alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+nhpi_population,Race/Ethnicity,Native Hawaiian and Other Pacific Islander alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+other_race_pct,Race/Ethnicity,Some other race alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+other_race_population,Race/Ethnicity,Some other race alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+white_pct,Race/Ethnicity,White alone percentage,numeric_percent,US Census Bureau,2000,2023,percent,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+white_population,Race/Ethnicity,White alone population,numeric_count,US Census Bureau,2000,2023,people,NA,Race/Ethnicity,FALSE,NA,NA,NA,FALSE
+civilian_veterans,Social,Percentage of civilian population who are veterans,numeric_percent,American Community Survey,2010,2023,percent,NA,Social,FALSE,NA,NA,NA,FALSE
+disconnected_youth,Social,Percentage of teens and young adults (16-24) neither working nor in school,numeric_percent,American Community Survey,2010,2023,percent,NA,Social,FALSE,NA,NA,NA,FALSE
+households_with_computer,Social,Percentage of households with a computer,numeric_percent,American Community Survey,2010,2023,percent,NA,Social,FALSE,NA,NA,NA,FALSE
+households_with_internet,Social,Percentage of households with broadband internet subscription,numeric_percent,American Community Survey,2010,2023,percent,NA,Social,FALSE,NA,NA,NA,FALSE
+single_parent_households_pct,Social,Percentage of single-parent households,numeric_percent,American Community Survey,2010,2023,percent,NA,Social,FALSE,NA,NA,NA,FALSE
+nonprofit_organizations_per_10k,Social Cohesion & Capital,"Nonprofit organizations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,Social,TRUE,NA,NA,NA,TRUE
+political_competition_index,Social Cohesion & Capital,Index measuring political competition,numeric_index,MIT Election Data and Science Lab,2000,2022,index,NA,Social,TRUE,NA,NA,NA,TRUE
+religious_congregation_rate,Social Cohesion & Capital,"Religious congregations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,Social,TRUE,NA,NA,NA,TRUE
+social_association_rate,Social Cohesion & Capital,"Social associations per 10,000 population",numeric_rate,County Health Rankings,2014,2023,count/10k,NA,Social,TRUE,NA,NA,NA,TRUE
+voter_registration_rate,Social Cohesion & Capital,Voter registration as percentage of eligible population,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent,NA,Social,TRUE,NA,NA,NA,TRUE
+voter_turnout_rate,Social Cohesion & Capital,Voter turnout rate in general elections,numeric_percent,MIT Election Data and Science Lab,2000,2022,percent,NA,Social,TRUE,NA,NA,NA,TRUE
+alcohol_impaired_fatalities,Traffic Safety,Alcohol-impaired driving fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+alcohol_impaired_fatality_rate,Traffic Safety,"Alcohol-impaired fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+bicycle_fatalities,Traffic Safety,Bicycle traffic fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+bicycle_fatality_rate,Traffic Safety,"Bicycle fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+motorcycle_fatalities,Traffic Safety,Motorcycle traffic fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+motorcycle_fatality_rate,Traffic Safety,"Motorcycle fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+pedestrian_fatalities,Traffic Safety,Pedestrian traffic fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+pedestrian_fatality_rate,Traffic Safety,"Pedestrian fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+speeding_related_fatalities,Traffic Safety,Speeding-related traffic fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+speeding_related_fatality_rate,Traffic Safety,"Speeding-related fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+traffic_fatalities,Traffic Safety,Total traffic fatalities,numeric_count,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+traffic_fatality_rate,Traffic Safety,"Traffic fatalities per 100,000 population",numeric_rate,NHTSA FARS (Fatality Analysis Reporting System),1975,2021,count/100k,NA,Transportation,TRUE,NA,NA,NA,TRUE
+commute_bicycle,Transportation,Workers commuting by bicycle,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_car_alone,Transportation,Workers commuting by driving alone,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_carpool,Transportation,Workers commuting by carpooling,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_long_pct,Transportation,Percentage of workers with commute >30 minutes,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_other,Transportation,Workers commuting by other means,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_public_transit,Transportation,Workers commuting by public transportation,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_walk,Transportation,Workers commuting by walking,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+commute_work_at_home,Transportation,Workers working at home,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+mean_commute_time,Transportation,Mean commute time (minutes),numeric_time,American Community Survey,2010,2023,minutes,NA,Transportation,FALSE,NA,NA,NA,FALSE
+no_vehicle_households_pct,Transportation,Percentage of households with no vehicle available,numeric_percent,American Community Survey,2010,2023,percent,NA,Transportation,FALSE,NA,NA,NA,FALSE
+public_transit_trips_per_capita,Transportation,Public transit trips per capita,numeric_rate,National Transit Database,2000,2022,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+transit_access_jobs,Transportation,Number of jobs accessible by transit within 30 minutes,numeric_count,All Transit Database,2012,2022,count,NA,Transportation,TRUE,NA,NA,NA,TRUE
+transit_connectivity_index,Transportation,Measure of transit connectivity,numeric_index,All Transit Database,2012,2022,index,NA,Transportation,TRUE,NA,NA,NA,TRUE
+transit_performance_index,Transportation,Composite measure of transit performance,numeric_index,All Transit Database,2012,2022,index,NA,Transportation,TRUE,NA,NA,NA,TRUE
+transportation_cost_burden_pct,Transportation,Transportation costs as percentage of household income,numeric_percent,National Household Travel Survey,2001,2017,percent,NA,Transportation,TRUE,NA,NA,NA,TRUE
+vehicle_miles_traveled_per_capita,Transportation,Annual vehicle miles traveled per capita,numeric_distance,National Household Travel Survey,2001,2017,miles,NA,Transportation,TRUE,NA,NA,NA,TRUE
+zero_vehicle_households_pct,Transportation,Percentage of households with no vehicles,numeric_percent,American Community Survey,2009,2023,percent,no_vehicle_households_pct,Transportation,TRUE,NA,NA,NA,TRUE

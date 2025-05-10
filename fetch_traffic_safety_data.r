@@ -60,7 +60,7 @@ fetch_traffic_safety_data <- function(years,
                                     imputed = "imputed"
                                   ),
                                   offline_mode = FALSE,
-                                  parallel = FALSE,
+                                  parallel = TRUE,
                                   parallel_config = NULL,
                                   census_data = NULL) {
   
@@ -68,6 +68,57 @@ fetch_traffic_safety_data <- function(years,
   traffic_cache_dir <- file.path(cache_dir, "traffic_safety")
   if (!dir.exists(traffic_cache_dir)) {
     dir.create(traffic_cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # Setup parallel processing if enabled
+  if (parallel) {
+    # Use module_core.r's setup_parallel_processing if available
+    if (exists("setup_parallel_processing")) {
+      # Configure parallel processing with adaptive strategy
+      if (is.null(parallel_config)) {
+        parallel_config <- setup_parallel_processing(
+          use_parallel = TRUE,
+          num_cores = NULL,  # Auto-detect
+          strategy = "auto", # Choose best strategy for platform
+          memory_limit_gb = 8,
+          chunk_size = 200
+        )
+      }
+      message("Parallel processing enabled for traffic safety data")
+    } else {
+      # Basic parallel setup
+      message("Using basic parallel processing setup for traffic safety data")
+      if (!requireNamespace("future", quietly = TRUE)) {
+        install.packages("future")
+        library(future)
+      }
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        install.packages("future.apply")
+        library(future.apply)
+      }
+      
+      # Determine number of cores
+      num_cores <- parallel::detectCores() - 1
+      num_cores <- max(2, num_cores) # At least 2 cores
+      
+      # Choose strategy based on OS
+      strategy <- if (.Platform$OS.type == "windows") {
+        "multisession"
+      } else {
+        "multicore"
+      }
+      
+      future::plan(strategy, workers = num_cores)
+      options(future.globals.maxSize = 8 * 1024^3) # 8GB
+      
+      parallel_config <- list(
+        enabled = TRUE,
+        cores = num_cores,
+        strategy = strategy,
+        memory_limit_gb = 8,
+        chunk_size = 200
+      )
+    }
   }
   
   # Default value for missing list elements
@@ -157,11 +208,11 @@ fetch_traffic_safety_data <- function(years,
     # Get counties from tigris for the most recent census
     counties <- tigris::counties(cb = TRUE, year = max(min(c(2020, current_year)), min(years)))
     
-    # Extract required fields
+    # Extract required fields and keep GEOID as is (don't rename to fips)
     counties %>%
       sf::st_drop_geometry() %>%
       select(GEOID, NAME) %>%
-      rename(fips = GEOID, county_name = NAME)
+      rename(county_name = NAME)  # Keep GEOID as GEOID
   }, error = function(e) {
     warning(paste("Error fetching county data from tigris:", e$message))
     # Return NULL if we couldn't get counties
@@ -170,31 +221,40 @@ fetch_traffic_safety_data <- function(years,
   
   # If tigris failed, try to create a basic county list from FARS data
   if (is.null(county_template) && !is.null(fars_data)) {
-    county_template <- fars_data %>%
-      select(fips) %>%
-      distinct() %>%
-      mutate(county_name = NA_character_)
+    # Check if we need to rename fips to GEOID
+    if ("fips" %in% names(fars_data) && !"GEOID" %in% names(fars_data)) {
+      county_template <- fars_data %>%
+        select(fips) %>%
+        rename(GEOID = fips) %>%
+        distinct() %>%
+        mutate(county_name = NA_character_)
+    } else {
+      county_template <- fars_data %>%
+        select(GEOID) %>%
+        distinct() %>%
+        mutate(county_name = NA_character_)
+    }
   }
   
   # If we still don't have counties, use a minimal template
   if (is.null(county_template)) {
     # Create an empty template - will be populated as we process data
     county_template <- data.frame(
-      fips = character(0),
+      GEOID = character(0),
       county_name = character(0)
     )
   }
   
   # Create a data frame with all counties and years
   all_counties_years <- tidyr::expand_grid(
-    fips = unique(county_template$fips),
+    GEOID = unique(county_template$GEOID),
     year = years
   )
   
   # Add county names if available
   if (nrow(county_template) > 0) {
     all_counties_years <- all_counties_years %>%
-      left_join(county_template, by = "fips")
+      left_join(county_template, by = "GEOID")
   } else {
     all_counties_years$county_name <- NA_character_
   }
@@ -253,8 +313,9 @@ fetch_traffic_safety_data <- function(years,
           Sys.setenv(CENSUS_API_KEY = census_api_key)
         }
         
-        # Get population data for each year
-        all_pop_data <- lapply(years, function(year) {
+        # Get population data for each year using parallel processing if enabled
+        get_population_for_year <- function(year) {
+          message(paste("Fetching population data for year:", year))
           yr_data <- NULL
           
           if (year >= 2010) {
@@ -303,9 +364,13 @@ fetch_traffic_safety_data <- function(years,
               ) %>% 
                 rename(pop_2010 = value)
               
-              # Join 2000 and 2010 data
-              yr_data <- yr_2000 %>%
-                left_join(yr_2010, by = "GEOID", suffix = c("_2000", "_2010"))
+              # Join 2000 and 2010 data using global_safe_merge if available
+              if (exists("global_safe_merge")) {
+                yr_data <- global_safe_merge(yr_2000, yr_2010, by_cols = "GEOID")
+              } else {
+                yr_data <- yr_2000 %>%
+                  left_join(yr_2010, by = "GEOID", suffix = c("_2000", "_2010"))
+              }
               
               # Linear interpolation between 2000 and 2010
               factor <- (year - 2000) / 10
@@ -352,7 +417,33 @@ fetch_traffic_safety_data <- function(years,
           }
           
           return(yr_data)
-        })
+        }
+        
+        # Use parallel processing if enabled
+        all_pop_data <- if (parallel && requireNamespace("future.apply", quietly = TRUE)) {
+          message("Using parallel processing for population data fetching")
+          
+          # Setup progress tracking if available
+          if (requireNamespace("progressr", quietly = TRUE)) {
+            progressr::handlers(progressr::handler_progress())
+            progressr::with_progress({
+              p <- progressr::progressor(steps = length(years))
+              
+              future.apply::future_lapply(years, function(year) {
+                result <- get_population_for_year(year)
+                p(message = paste("Processed population data for year", year))
+                return(result)
+              })
+            })
+          } else {
+            # No progress tracking
+            future.apply::future_lapply(years, get_population_for_year)
+          }
+        } else {
+          # Fallback to sequential processing
+          message("Using sequential processing for population data fetching")
+          lapply(years, get_population_for_year)
+        }
         
         # Combine all years
         pop_data <- bind_rows(all_pop_data) %>%
@@ -398,9 +489,13 @@ fetch_traffic_safety_data <- function(years,
     
     # Ensure fips and year columns exist
     if (all(c("fips", "year") %in% names(fars_data))) {
+      # Rename fips to GEOID for consistency
+      fars_data <- fars_data %>%
+        rename(GEOID = fips)
+      
       # Prepare FARS variables for merging
       fars_for_merge <- fars_data %>%
-        select(fips, year, 
+        select(GEOID, year, 
                matches("traffic_fatality|ped_bike|dui|speeding")) %>%
         # Fill _data_quality columns if they don't exist
         mutate(across(matches("traffic_fatality|ped_bike|dui|speeding"), 
@@ -411,7 +506,7 @@ fetch_traffic_safety_data <- function(years,
       
       # Merge with combined_data
       combined_data <- combined_data %>%
-        left_join(fars_for_merge, by = c("fips", "year"), suffix = c("", "_fars"))
+        left_join(fars_for_merge, by = c("GEOID", "year"), suffix = c("", "_fars"))
       
       # For each variable from FARS, update the corresponding variable in combined_data
       # giving preference to FARS data when available
@@ -461,13 +556,17 @@ fetch_traffic_safety_data <- function(years,
     
     # Ensure fips and year columns exist
     if (all(c("fips", "year") %in% names(cdc_data))) {
+      # Rename fips to GEOID for consistency
+      cdc_data <- cdc_data %>%
+        rename(GEOID = fips)
+      
       # Only use CDC data for variables not already populated from FARS
       # CDC generally provides mortality data, but may not have specific 
       # breakdowns like FARS does
       
       # Prepare CDC variables for merging
       cdc_for_merge <- cdc_data %>%
-        select(fips, year, 
+        select(GEOID, year, 
                matches("traffic|transport")) %>%
         # Fill _data_quality columns if they don't exist
         mutate(across(matches("traffic|transport"), 
@@ -478,7 +577,7 @@ fetch_traffic_safety_data <- function(years,
       
       # Merge with combined_data
       combined_data <- combined_data %>%
-        left_join(cdc_for_merge, by = c("fips", "year"), suffix = c("", "_cdc"))
+        left_join(cdc_for_merge, by = c("GEOID", "year"), suffix = c("", "_cdc"))
       
       # For variables that might overlap with FARS but are missing in combined_data,
       # use the CDC data
@@ -535,9 +634,9 @@ fetch_traffic_safety_data <- function(years,
     }
   }
   
-  # Standardize FIPS codes to ensure proper formatting
+  # Standardize GEOID codes to ensure proper formatting
   combined_data <- combined_data %>%
-    mutate(fips = sprintf("%05d", as.numeric(fips)))
+    mutate(GEOID = sprintf("%05d", as.numeric(GEOID)))
   
   # Interpolate missing years if allowed
   if (allow_interpolation) {
@@ -552,7 +651,7 @@ fetch_traffic_safety_data <- function(years,
     
     # Interpolate each variable for each county
     combined_data <- combined_data %>%
-      group_by(fips) %>%
+      group_by(GEOID) %>%
       mutate(across(all_of(vars_to_interpolate), 
                    ~if(any(!is.na(.))) {
                      zoo::na.approx(.x, na.rm = FALSE)
@@ -578,14 +677,15 @@ fetch_traffic_safety_data <- function(years,
   if (!is.null(population_data) && nrow(population_data) > 0) {
     message("Calculating rates using population data...")
     
-    # Ensure population data has standardized FIPS codes
+    # Ensure population data has standardized FIPS codes and rename to GEOID
     population_data <- population_data %>%
-      mutate(fips = sprintf("%05d", as.numeric(fips)))
+      mutate(fips = sprintf("%05d", as.numeric(fips))) %>%
+      rename(GEOID = fips)
     
     # Join with population data (keeping only required columns)
     combined_data <- combined_data %>%
-      left_join(population_data %>% select(fips, year, population), 
-               by = c("fips", "year"))
+      left_join(population_data %>% select(GEOID, year, population), 
+               by = c("GEOID", "year"))
     
     # Calculate rates using actual population
     combined_data <- combined_data %>%
@@ -666,13 +766,19 @@ fetch_traffic_safety_data <- function(years,
   
   # Ensure we have GEOID for compatibility with the SDOH pipeline
   combined_data <- combined_data %>%
+    # Make sure all data quality flags are filled
     mutate(
-      GEOID = fips,  # Add GEOID for compatibility with SDOH pipeline
-      
-      # Make sure all data quality flags are filled
       across(ends_with("_data_quality"), 
             ~ifelse(is.na(.x), missing_flag, .x))
     )
+    
+  # Check if fips column exists and use it for GEOID if it does
+  if ("fips" %in% names(combined_data)) {
+    combined_data <- combined_data %>%
+      mutate(GEOID = fips) %>%  # Add GEOID for compatibility with SDOH pipeline
+      # Use GEOID consistently instead of fips to fix column naming inconsistency
+      rename_with(~gsub("^fips$", "GEOID", .), everything())
+  }
   
   # Save the combined dataset to cache
   message("Saving combined traffic safety data to cache...")
@@ -699,6 +805,15 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   fars_api_base <- "https://crashviewer.nhtsa.dot.gov/CrashAPI/"
   fars_data_url <- "https://www.nhtsa.gov/file-downloads?p=nhtsa/downloads/FARS/"
   
+  # Alternative data sources
+  fars_alt_sources <- list(
+    # Official alternative direct URLs for FARS files
+    nhtsa_ftp = "https://www.nhtsa.gov/content/nhtsa/downloads/", 
+    nhtsa_ftp2 = "https://crashstats.nhtsa.dot.gov/Api/Public/ViewPublication/",
+    # Data archive (for older data)
+    fars_archive = "https://www.transportation.gov/data/safety/archive/FARS"
+  )
+  
   # Create cache file path
   fars_cache_file <- file.path(cache_dir, paste0("fars_data_", min(years), "_", max(years), ".rds"))
   
@@ -706,6 +821,150 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   if (file.exists(fars_cache_file) && !refresh_cache) {
     message("Loading FARS data from cache...")
     return(readRDS(fars_cache_file))
+  }
+  
+  # Create cache directory for traffic safety
+  traffic_safety_dir <- file.path(cache_dir, "traffic_safety")
+  if (!dir.exists(traffic_safety_dir)) {
+    dir.create(traffic_safety_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # Check for predownloaded sample data
+  fars_sample_path <- file.path(dirname(cache_dir), "traffic_safety/fars/FARS_2020_county.csv")
+  if (file.exists(fars_sample_path)) {
+    message("Found pre-downloaded sample FARS data file. Using this as seed data.")
+    
+    # Read the sample data
+    sample_data <- read.csv(fars_sample_path, stringsAsFactors = FALSE)
+    
+    # Make sure the required 2020 data is present in the request
+    if (2020 %in% years) {
+      # Initialize fars_data with the sample data, but don't return immediately
+      # This allows us to still try to fetch additional years
+      fars_data <- sample_data
+      
+      # Save to cache directly for 2020
+      fars_2020_cache <- file.path(traffic_safety_dir, "fars_2020.rds")
+      saveRDS(sample_data, fars_2020_cache)
+      message(paste("Cached 2020 FARS data with", nrow(sample_data), "records."))
+      
+      # Mark 2020 as already processed
+      years <- years[years != 2020]
+    }
+  }
+  
+  # Check for pre-downloaded data in the data directory
+  predownloaded_path <- file.path(dirname(cache_dir), "traffic_safety/fars")
+  if (dir.exists(predownloaded_path)) {
+    message("Checking for pre-downloaded FARS data...")
+    
+    # Look for year-specific data files
+    year_files <- list()
+    for (year in years) {
+      # Check for CSV files first (preferred format)
+      year_pattern <- paste0("fars.*", year, ".*\\.csv$|", year, ".*fars.*\\.csv$")
+      year_files_csv <- list.files(
+        path = predownloaded_path, 
+        pattern = year_pattern, 
+        recursive = TRUE, 
+        ignore.case = TRUE,
+        full.names = TRUE
+      )
+      
+      # If no CSV, check for Excel files
+      if (length(year_files_csv) == 0) {
+        year_pattern <- paste0("fars.*", year, ".*\\.xlsx?$|", year, ".*fars.*\\.xlsx?$")
+        year_files_xlsx <- list.files(
+          path = predownloaded_path, 
+          pattern = year_pattern, 
+          recursive = TRUE, 
+          ignore.case = TRUE,
+          full.names = TRUE
+        )
+        
+        if (length(year_files_xlsx) > 0) {
+          year_files[[as.character(year)]] <- year_files_xlsx[1]
+        }
+      } else {
+        year_files[[as.character(year)]] <- year_files_csv[1]
+      }
+    }
+    
+    # Process pre-downloaded files if found
+    if (length(year_files) > 0) {
+      message(paste("Found", length(year_files), "pre-downloaded FARS data files."))
+      
+      # Process each file
+      year_data_list <- list()
+      for (year in names(year_files)) {
+        file_path <- year_files[[year]]
+        message(paste("Processing pre-downloaded data for year", year, "from", basename(file_path)))
+        
+        # Read the file based on extension
+        if (grepl("\\.csv$", file_path, ignore.case = TRUE)) {
+          year_data <- tryCatch({
+            read.csv(file_path, stringsAsFactors = FALSE)
+          }, error = function(e) {
+            message(paste("Error reading CSV:", e$message))
+            return(NULL)
+          })
+        } else if (grepl("\\.xlsx?$", file_path, ignore.case = TRUE)) {
+          year_data <- tryCatch({
+            readxl::read_excel(file_path)
+          }, error = function(e) {
+            message(paste("Error reading Excel file:", e$message))
+            return(NULL)
+          })
+        } else {
+          year_data <- NULL
+        }
+        
+        if (!is.null(year_data) && nrow(year_data) > 0) {
+          # Process year data to match our expected output format
+          # Look for standard FARS columns and rename as needed
+          
+          # Add year column if missing
+          if (!"year" %in% names(year_data)) {
+            year_data$year <- as.numeric(year)
+          }
+          
+          # Standardize column names to lowercase
+          year_data <- year_data %>%
+            rename_with(~tolower(gsub(" ", "_", .x)))
+          
+          # Try to identify state and county columns to create FIPS
+          if (all(c("state", "county") %in% names(year_data)) && !"fips" %in% names(year_data)) {
+            year_data <- year_data %>%
+              mutate(
+                state = sprintf("%02d", as.numeric(state)),
+                county = sprintf("%03d", as.numeric(county)),
+                fips = paste0(state, county)
+              )
+          }
+          
+          # Add to data list
+          year_data_list[[year]] <- year_data
+        }
+      }
+      
+      # Combine all year data
+      if (length(year_data_list) > 0) {
+        fars_data <- bind_rows(year_data_list)
+        
+        # Process and save to cache
+        if (nrow(fars_data) > 0) {
+          saveRDS(fars_data, fars_cache_file)
+          message(paste("Saved processed FARS data from pre-downloaded files to cache with", nrow(fars_data), "records."))
+          
+          # Only return if we're not using other data sources (years is empty)
+          if (length(years) == 0) {
+            return(fars_data)
+          }
+          
+          # Otherwise continue processing other years through API
+        }
+      }
+    }
   }
   
   message("Fetching FARS data from NHTSA API...")
@@ -743,13 +1002,13 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
     } else {
       message(paste("Fetching FARS data for", year))
       
-      # First try API
+      # First try primary API
       api_data <- tryCatch({
         # Construct API endpoint for county-level data
         endpoint <- paste0(fars_api_base, "crashes/GetCrashesByLocation?year=", year, "&format=json")
         
         # Try to fetch data from API
-        response <- httr::GET(endpoint)
+        response <- httr::GET(endpoint, timeout(10))  # Add timeout to prevent hanging
         
         # Check if the request was successful
         if (httr::status_code(response) == 200) {
@@ -773,9 +1032,114 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
         # If we get here, the API request failed or returned unexpected format
         NULL
       }, error = function(e) {
-        warning(paste("API error for year", year, ":", e$message))
+        warning(paste("Primary API error for year", year, ":", e$message))
         NULL
       })
+      
+      # If primary API failed, try alternative APIs
+      if (is.null(api_data)) {
+        message(paste("Primary API failed for year", year, ". Trying alternative sources..."))
+        
+        # Try alternative endpoint format from NHTSA
+        api_data <- tryCatch({
+          # Try alternative NHTSA API endpoint (different format)
+          alt_endpoint <- paste0("https://crashstats.nhtsa.dot.gov/Api/Public/GetCaseList?format=csv&year=", year)
+          
+          # Download to temporary file
+          temp_file <- tempfile(fileext = ".csv")
+          utils::download.file(alt_endpoint, temp_file, quiet = TRUE, mode = "wb")
+          
+          # Read the CSV file if it exists and has content
+          if (file.exists(temp_file) && file.size(temp_file) > 100) {
+            alt_data <- read.csv(temp_file, stringsAsFactors = FALSE)
+            
+            # Process the data to match expected format
+            if (nrow(alt_data) > 0) {
+              # Process to county level
+              if (all(c("STATE", "COUNTY") %in% names(alt_data))) {
+                county_data <- alt_data %>%
+                  group_by(STATE, COUNTY) %>%
+                  summarize(
+                    traffic_fatality_count = n(),
+                    .groups = "drop"
+                  ) %>%
+                  mutate(
+                    fips = sprintf("%02d%03d", as.numeric(STATE), as.numeric(COUNTY)),
+                    year = year
+                  )
+                return(county_data)
+              }
+            }
+          }
+          NULL
+        }, error = function(e) {
+          warning(paste("Alternative API error for year", year, ":", e$message))
+          NULL
+        }, finally = {
+          # Clean up temporary file
+          if (exists("temp_file") && file.exists(temp_file)) {
+            file.remove(temp_file)
+          }
+        })
+        
+        # If still no data, try downloading from alternative FARS website
+        if (is.null(api_data)) {
+          # Try to download from NHTSA FTP site
+          api_data <- tryCatch({
+            # Construct URL for files (vary by year and format)
+            alt_url <- if (year >= 2010) {
+              paste0("https://www.nhtsa.gov/file-downloads/download?p=nhtsa/downloads/FARS/", 
+                     year, "/National/FARS", year, "NationalCSV.zip")
+            } else {
+              paste0("https://www.nhtsa.gov/file-downloads/download?p=nhtsa/downloads/FARS/", 
+                     year, "/Data/FARS", year, ".zip")
+            }
+            
+            # Create temporary files
+            temp_zip <- tempfile(fileext = ".zip")
+            temp_dir <- tempdir()
+            
+            # Try to download the file
+            utils::download.file(alt_url, temp_zip, mode = "wb", quiet = TRUE)
+            
+            # Extract the files
+            utils::unzip(temp_zip, exdir = temp_dir)
+            
+            # Look for accident.csv or similar files
+            accident_file <- list.files(temp_dir, pattern = "accident\\.csv$", 
+                                      full.names = TRUE, recursive = TRUE)[1]
+            
+            # Process the accident data if found
+            if (!is.na(accident_file) && file.exists(accident_file)) {
+              accident_data <- read.csv(accident_file, stringsAsFactors = FALSE)
+              
+              # Process to county level
+              if (all(c("STATE", "COUNTY") %in% names(accident_data))) {
+                county_data <- accident_data %>%
+                  group_by(STATE, COUNTY) %>%
+                  summarize(
+                    traffic_fatality_count = n(),
+                    .groups = "drop"
+                  ) %>%
+                  mutate(
+                    fips = sprintf("%02d%03d", as.numeric(STATE), as.numeric(COUNTY)),
+                    year = year
+                  )
+                return(county_data)
+              }
+            }
+            NULL
+          }, error = function(e) {
+            warning(paste("Error downloading FARS file for year", year, ":", e$message))
+            NULL
+          }, finally = {
+            # Clean up temporary files
+            if (exists("temp_zip") && file.exists(temp_zip)) {
+              file.remove(temp_zip)
+            }
+          })
+        }
+      }
       
       # If API failed, try downloading the raw data files
       if (is.null(api_data)) {
@@ -919,29 +1283,35 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   fars_data <- fars_data %>%
     rename_with(~tolower(gsub(" ", "_", .x)))
   
-  # Ensure we have a fips column
-  if (!"fips" %in% names(fars_data)) {
-    # Try to create fips from state and county codes
-    if (all(c("state", "county") %in% names(fars_data))) {
+  # Ensure we have a GEOID column (renamed from fips for consistency)
+  if (!"GEOID" %in% names(fars_data)) {
+    if ("fips" %in% names(fars_data)) {
+      # If fips exists, rename it to GEOID
+      fars_data <- fars_data %>%
+        rename(GEOID = fips)
+    } else if ("geoid" %in% names(fars_data)) {
+      # If geoid exists, rename it to GEOID (standardize case)
+      fars_data <- fars_data %>%
+        rename(GEOID = geoid)
+    } else if ("county_fips" %in% names(fars_data)) {
+      # If county_fips exists, rename it to GEOID
+      fars_data <- fars_data %>%
+        rename(GEOID = county_fips)
+    } else if (all(c("state", "county") %in% names(fars_data))) {
+      # Create GEOID from state and county codes
       fars_data <- fars_data %>%
         mutate(
           state = sprintf("%02d", as.numeric(state)),
           county = sprintf("%03d", as.numeric(county)),
-          fips = paste0(state, county)
+          GEOID = paste0(state, county)
         )
-    } else if ("geoid" %in% names(fars_data)) {
-      fars_data <- fars_data %>%
-        rename(fips = geoid)
-    } else if ("county_fips" %in% names(fars_data)) {
-      fars_data <- fars_data %>%
-        rename(fips = county_fips)
     }
   }
   
   # Standardize data types
   fars_data <- fars_data %>%
     mutate(
-      fips = as.character(fips),
+      GEOID = as.character(GEOID),
       year = as.numeric(year),
       # Ensure all numeric columns are properly typed
       across(matches("count|rate|number|total"), ~as.numeric(as.character(.x)))
@@ -950,8 +1320,8 @@ get_fars_data <- function(years, cache_dir, refresh_cache = FALSE) {
   # Filter to valid records
   fars_data <- fars_data %>%
     filter(year %in% years,
-           !is.na(fips),
-           nchar(fips) == 5)
+           !is.na(GEOID),
+           nchar(GEOID) == 5)
   
   # Save the processed data to cache
   saveRDS(fars_data, fars_cache_file)
@@ -1139,24 +1509,27 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     cdc_data <- cdc_data %>%
       rename_with(~tolower(gsub(" ", "_", .x)))
     
-    # Ensure we have a fips column
-    if (!"fips" %in% names(cdc_data)) {
-      # Check for alternative column names
-      if ("county_code" %in% names(cdc_data)) {
+    # Ensure we have a GEOID column (renamed from fips for consistency)
+    if (!"GEOID" %in% names(cdc_data)) {
+      if ("fips" %in% names(cdc_data)) {
+        # If fips exists, rename it to GEOID
         cdc_data <- cdc_data %>%
-          rename(fips = county_code)
+          rename(GEOID = fips)
+      } else if ("county_code" %in% names(cdc_data)) {
+        cdc_data <- cdc_data %>%
+          rename(GEOID = county_code)
       } else if ("county_fips" %in% names(cdc_data)) {
         cdc_data <- cdc_data %>%
-          rename(fips = county_fips)
+          rename(GEOID = county_fips)
       } else if ("geoid" %in% names(cdc_data)) {
         cdc_data <- cdc_data %>%
-          rename(fips = geoid)
+          rename(GEOID = geoid)
       } else if (all(c("state_code", "county_code") %in% names(cdc_data))) {
         cdc_data <- cdc_data %>%
           mutate(
             state_code = sprintf("%02d", as.numeric(state_code)),
             county_code = sprintf("%03d", as.numeric(county_code)),
-            fips = paste0(state_code, county_code)
+            GEOID = paste0(state_code, county_code)
           )
       }
     }
@@ -1164,7 +1537,7 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     # Standardize column data types
     cdc_data <- cdc_data %>%
       mutate(
-        fips = as.character(fips),
+        GEOID = as.character(GEOID),
         year = as.numeric(year),
         # Ensure all numeric columns are properly typed
         across(matches("count|rate|number|total|deaths"), 
@@ -1174,8 +1547,8 @@ get_cdc_wonder_data <- function(years, cache_dir, refresh_cache = FALSE) {
     # Filter to valid records
     cdc_data <- cdc_data %>%
       filter(year %in% years,
-             !is.na(fips),
-             nchar(fips) == 5)
+             !is.na(GEOID),
+             nchar(GEOID) == 5)
     
     # Rename deaths column to transport_mortality_count if present
     if ("deaths" %in% names(cdc_data) && !"transport_mortality_count" %in% names(cdc_data)) {
